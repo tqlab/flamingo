@@ -1,0 +1,40 @@
+syntax = "proto3";
+package message;
+option go_package = ".;message";
+
+// Request data
+message Request {
+  RequestHeader header = 1;
+  OriginalData originalData = 2;
+}
+
+// Response data
+message Response {
+  ResponseHeader header = 1;
+  OriginalData originalData = 2;
+}
+
+message RequestHeader {
+  int64 id = 1;
+  int32 algorithm = 2;
+  // 1 connect, 2 heartbeat, 3 data, 9 close
+  int32 type = 3;
+}
+
+message ResponseHeader {
+  int64  id = 1;
+  int32  algorithm = 2;
+  // 1 connect, 2 heartbeat, 3 data, 9 close
+  int32  type = 3;
+  bool   success = 4;
+  string errMsg = 5;
+}
+
+message OriginalData {
+  bytes data = 1;
+}
+
+message ConnectData {
+  string fqdn = 1;
+  int32 port = 2;
+}

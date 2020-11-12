@@ -1,0 +1,3 @@
+# About
+
+Flamingo is a simple protocol library for NETWORK transport.
