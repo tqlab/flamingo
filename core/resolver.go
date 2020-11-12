@@ -2,25 +2,20 @@ package core
 
 import (
 	"errors"
-	"math/rand"
+	"github.com/miekg/dns"
+	"golang.org/x/sync/singleflight"
 	"net"
 	"os"
 	"strings"
 	"sync"
-	"time"
-
-	"github.com/miekg/dns"
-	"golang.org/x/sync/singleflight"
 )
 
 // DnsResolver represents a dns resolver
 type DnsResolver struct {
 	Servers    []string
 	RetryTimes int
-	r          *rand.Rand
-
-	mu    sync.RWMutex
-	cache map[string]*cacheEntry
+	mu         sync.RWMutex
+	cache      map[string]*cacheEntry
 
 	// OnCacheMiss is executed if the host or address is not included in
 	// the cache and the default lookup is executed.
@@ -39,7 +34,7 @@ func NewDnsResolver(servers []string) *DnsResolver {
 		servers[i] = net.JoinHostPort(servers[i], "53")
 	}
 
-	return &DnsResolver{Servers: servers, RetryTimes: len(servers) * 2, r: rand.New(rand.NewSource(time.Now().UnixNano())), cache: make(map[string]*cacheEntry)}
+	return &DnsResolver{Servers: servers, RetryTimes: len(servers) * 2, cache: make(map[string]*cacheEntry)}
 }
 
 // NewDnsResolverFromConf initializes DnsResolver from resolv.conf like file.
@@ -90,20 +85,25 @@ func (r *DnsResolver) Refresh(clearUnused bool) {
 	}
 }
 
-func (r *DnsResolver) lookupHost(host string, triesLeft int) ([]net.IP, error) {
+func (r *DnsResolver) lookupHost(host string, triesLeft int, index int) ([]net.IP, error) {
 	m1 := new(dns.Msg)
 	m1.Id = dns.Id()
 	m1.RecursionDesired = true
 	m1.Question = make([]dns.Question, 1)
 	m1.Question[0] = dns.Question{Name: dns.Fqdn(host), Qtype: dns.TypeA, Qclass: dns.ClassINET}
-	in, err := dns.Exchange(m1, r.Servers[r.r.Intn(len(r.Servers))])
+
+	if index >= len(r.Servers) {
+		index = 0
+	}
+	dnsServer := r.Servers[index]
+	in, err := dns.Exchange(m1, dnsServer)
 
 	var result []net.IP
 
 	if err != nil {
 		if strings.HasSuffix(err.Error(), "i/o timeout") && triesLeft > 0 {
 			triesLeft--
-			return r.lookupHost(host, triesLeft)
+			return r.lookupHost(host, triesLeft, index+1)
 		}
 		return result, err
 	}
@@ -170,7 +170,7 @@ func (r *DnsResolver) lookupFunc(key string) func() (interface{}, error) {
 	switch key[0] {
 	case 'h':
 		return func() (interface{}, error) {
-			return r.lookupHost(key[1:], r.RetryTimes)
+			return r.lookupHost(key[1:], r.RetryTimes, 0)
 		}
 	default:
 		panic("lookupFunc invalid key type: " + key)
