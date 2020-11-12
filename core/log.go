@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -136,30 +137,30 @@ func NewFileLogger(logFileName, errorLogFileName string) *FileLogger {
 }
 
 // Trace - no-op
-func (fileLogger FileLogger) Trace(f string, args ...interface{}) {
+func (fileLogger *FileLogger) Trace(f string, args ...interface{}) {
 	fileLogger.output(fileLogger.logFile, "blue", f, args...)
 }
 
 // Debug - no-op
-func (fileLogger FileLogger) Debug(f string, args ...interface{}) {
+func (fileLogger *FileLogger) Debug(f string, args ...interface{}) {
 	fileLogger.output(fileLogger.logFile, "green", f, args...)
 }
 
 // Info - no-op
-func (fileLogger FileLogger) Info(f string, args ...interface{}) {
+func (fileLogger *FileLogger) Info(f string, args ...interface{}) {
 	fileLogger.output(fileLogger.logFile, "default", f, args...)
 }
 
 // Warn - no-op
-func (fileLogger FileLogger) Warn(f string, args ...interface{}) {
+func (fileLogger *FileLogger) Warn(f string, args ...interface{}) {
 	fileLogger.output(fileLogger.logFile, "yellow", f, args...)
 }
 
-func (fileLogger FileLogger) Error(f string, args ...interface{}) {
+func (fileLogger *FileLogger) Error(f string, args ...interface{}) {
 	fileLogger.output(fileLogger.errorLogFile, "red", f, args...)
 }
 
-func (fileLogger FileLogger) output(logFile *os.File, color, f string, args ...interface{}) {
+func (fileLogger *FileLogger) output(logFile *os.File, color, f string, args ...interface{}) {
 
 	date := time.Now().Format("2006-01-02 15:04:05.000")
 	var format string
@@ -197,11 +198,14 @@ func (fileLogger FileLogger) output(logFile *os.File, color, f string, args ...i
 	newFormat := fmt.Sprintf(format, date, f)
 	fileLogger.checkLogFile()
 	line := fmt.Sprintf(newFormat, args...)
-	logFile.Write([]byte(line))
+	_, err := logFile.Write([]byte(line))
+	if err != nil {
+		log.Printf("%v", err)
+	}
 	logFile.Sync()
 }
 
-func (fileLogger FileLogger) checkLogFile() {
+func (fileLogger *FileLogger) checkLogFile() {
 	fileName := fileLogger.logFile.Name()
 	errorFileName := fileLogger.errorLogFile.Name()
 	info, err := os.Stat(fileName)
@@ -223,8 +227,11 @@ func (fileLogger FileLogger) checkLogFile() {
 		fileLogger.errorLogFile.Close()
 
 		// create new file
-		fileLogger.logFile, _ = os.Create(fileName)
-		fileLogger.errorLogFile, _ = os.Create(errorFileName)
+		newLogFile, _ := os.OpenFile(fileName, os.O_RDWR|os.O_APPEND|os.O_CREATE, 0666)
+		newErrorLogFile, _ := os.OpenFile(errorFileName, os.O_RDWR|os.O_APPEND|os.O_CREATE, 0666)
+
+		fileLogger.logFile = newLogFile
+		fileLogger.errorLogFile = newErrorLogFile
 	}
 }
 
