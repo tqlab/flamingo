@@ -1,0 +1,14 @@
+target
+._*
+.~*
+deb/flamingo/flamingo
+deb/flamingo/flamingo.1*
+Stats.ods
+dist
+builder/cache
+.idea
+release.sh
+__pycache__
+*.pem
+.vscode
+Cargo.lock
