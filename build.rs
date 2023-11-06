@@ -13,11 +13,11 @@ fn main() {
     fs::copy("flamingo.adoc", Path::new(&out_dir).join("flamingo.adoc")).unwrap();
     match Command::new("asciidoctor")
         .args(&["-b", "manpage", "flamingo.adoc"])
-        .current_dir(&Path::new(&out_dir))
+        .current_dir(Path::new(&out_dir))
         .status()
     {
         Ok(_) => {
-            Command::new("gzip").args(&["flamingo.1"]).current_dir(&Path::new(&out_dir)).status().unwrap();
+            Command::new("gzip").args(["flamingo.1"]).current_dir(Path::new(&out_dir)).status().unwrap();
             fs::copy(Path::new(&out_dir).join("flamingo.1.gz"), "target/flamingo.1.gz").unwrap();
         }
         Err(err) => {

@@ -1,47 +1,46 @@
 [package]
-name = "flamingo"
-version = "1.0.0"
 authors = ["redhat.jun@gmail.com"]
 build = "build.rs"
-license = "GPL-3.0"
 description = "Peer-to-peer VPN"
-homepage = "https://dighole.net"
-repository = "https://github.com/tqlab/flamingo"
-keywords = ["vpn", "p2p", "tun", "tap", "network"]
-readme = "README.md"
 edition = "2021"
+homepage = "https://dighole.net"
+keywords = ["vpn", "p2p", "tun", "tap", "network"]
+license = "GPL-3.0"
+name = "flamingo"
+readme = "README.md"
+repository = "https://github.com/tqlab/flamingo"
+version = "1.0.0"
 
 [package.metadata]
-toolchain = "1.60.0"
+toolchain = "1.73.0"
 upx_version = "4.0.1"
 
 [dependencies]
-chrono = { version = "0.4", features = ["std", "clock"], default_features = false}
-structopt = "0.3"
-serde = { version = "1.0", features = ["derive"] }
-serde_yaml = "0.8"
-log = { version = "0.4", features = ["std"] }
-signal = "0.7"
-libc = "0.2"
-rand = "0.8"
-fnv = "1"
-yaml-rust = "0.4"
-daemonize = "0.4"
-ring = "0.16"
-privdrop = "0.5"
 byteorder = "1.4"
-thiserror = "1.0"
+chrono = {version = "0.4", features = ["std", "clock"], default_features = false}
+daemonize = "0.5"
+dialoguer = {version = "0.11", optional = true}
+fnv = "1"
+igd = {version = "0.12", optional = true}
+libc = "0.2"
+log = {version = "0.4", features = ["std"]}
+privdrop = "0.5"
+rand = "0.8"
+ring = "0.17"
+serde = {version = "1.0", features = ["derive"]}
+serde_yaml = "0.9"
+signal = "0.7"
 smallvec = "1.7"
-dialoguer = { version = "0.9", optional = true }
-tungstenite = { version = "0.16", optional = true, default-features = false }
-url = { version = "2.2", optional = true }
-igd = { version = "0.12", optional = true }
-
+structopt = "0.3"
+thiserror = "1.0"
+tungstenite = {version = "0.20", optional = true}
+url = {version = "2.2", optional = true}
+yaml-rust = "0.4"
 
 [dev-dependencies]
-tempfile = "3"
-criterion = { version = "0.3", features = ["html_reports"] }
+criterion = {version = "0.5", features = ["html_reports"]}
 iai = "0.1"
+tempfile = "3"
 
 [features]
 default = ["nat", "websocket", "wizard"]
@@ -50,12 +49,12 @@ websocket = ["tungstenite", "url"]
 wizard = ["dialoguer"]
 
 [[bench]]
-name = "criterion"
 harness = false
+name = "criterion"
 
 [[bench]]
-name = "valgrind"
 harness = false
+name = "valgrind"
 
 [profile.release]
 lto = true
@@ -67,6 +66,16 @@ lto = false
 lto = false
 
 [package.metadata.deb]
+assets = [
+  ["target/release/flamingo", "/usr/bin/flamingo", "755"],
+  ["assets/example.net.disabled", "/etc/flamingo/example.net.disabled", "600"],
+  ["assets/flamingo@.service", "/lib/systemd/system/flamingo@.service", "644"],
+  ["assets/flamingo.target", "/lib/systemd/system/flamingo.target", "644"],
+  ["assets/flamingo-wsproxy.service", "/lib/systemd/system/flamingo-wsproxy.service", "644"],
+  ["target/flamingo.1.gz", "/usr/share/man/man1/flamingo.1.gz", "644"],
+]
+changelog = "assets/changelog.txt"
+depends = "libc6 (>= 2.23), libgcc1 (>= 1:6.0.1)"
 extended-description = """\
  Flamingo is a high performance peer-to-peer mesh VPN over UDP supporting strong encryption, 
  NAT traversal and a simple configuration. It establishes a fully-meshed self-healing VPN
@@ -75,15 +84,5 @@ extended-description = """\
  received data via UDP to the destination. It can work on TUN devices (IP based) and TAP 
  devices (Ethernet based)."""
 license-file = ["LICENSE.md", "1"]
-changelog = "assets/changelog.txt"
-section = "net"
-depends = "libc6 (>= 2.23), libgcc1 (>= 1:6.0.1)"
 maintainer-scripts = "assets/deb-scripts"
-assets = [
-  ["target/release/flamingo", "/usr/bin/flamingo", "755"],
-  ["assets/example.net.disabled", "/etc/flamingo/example.net.disabled", "600"],
-  ["assets/flamingo@.service", "/lib/systemd/system/flamingo@.service", "644"],
-  ["assets/flamingo.target", "/lib/systemd/system/flamingo.target", "644"],
-  ["assets/flamingo-wsproxy.service", "/lib/systemd/system/flamingo-wsproxy.service", "644"],
-  ["target/flamingo.1.gz", "/usr/share/man/man1/flamingo.1.gz", "644"]
-]
+section = "net"
