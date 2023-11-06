@@ -48,14 +48,6 @@ nat = ["igd"]
 websocket = ["tungstenite", "url"]
 wizard = ["dialoguer"]
 
-[[bench]]
-harness = false
-name = "criterion"
-
-[[bench]]
-harness = false
-name = "valgrind"
-
 [profile.release]
 lto = true
 
