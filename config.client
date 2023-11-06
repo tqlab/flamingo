@@ -20,4 +20,5 @@ ifdown: >-
   GATEWAY=$(cat /tmp/flamingo.$IFNAME.old-gateway) &&
   ip route del SERVER-IP/32 via $GATEWAY &&
   ip route del default &&
-  ip route add default via $(cat /tmp/flamingo.$IFNAME.old-gateway)
+  ip route add default via $GATEWAY &&
+  rm /tmp/flamingo.$IFNAME.old-gateway
