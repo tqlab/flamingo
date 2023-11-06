@@ -43,7 +43,7 @@ fi
 build_deb() {
   ARCH=$1
   TARGET=$2
-  if ! [ -f ../distflamingo_${DEB_VERSION}_${ARCH}.deb ]; then
+  if ! [ -f ../dist/flamingo_${DEB_VERSION}_${ARCH}.deb ]; then
     docker_cmd deb "cd code && cargo deb --target ${TARGET}"
     cp $CACHE/deb/target/${TARGET}/debian/flamingo_${DEB_VERSION}_${ARCH}.deb ../dist/flamingo_${DEB_VERSION}_${ARCH}.deb
   fi

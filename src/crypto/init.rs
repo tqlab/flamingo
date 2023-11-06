@@ -498,7 +498,7 @@ impl<P: Payload> InitState<P> {
     }
 
     fn send_message(&mut self, stage: u8, ecdh_public_key: Option<EcdhPublicKey>, out: &mut MsgBuffer) {
-        debug!("Sending init with stage={}", stage);
+        debug!("Sending init with stage={} {:p}", stage, self);
         assert!(out.is_empty());
         let mut public_key = [0; ED25519_PUBLIC_KEY_LEN];
         public_key.clone_from_slice(self.key_pair.as_ref().public_key().as_ref());
@@ -567,7 +567,7 @@ impl<P: Payload> InitState<P> {
         out.clear();
         let stage = msg.stage();
         let salted_node_id_hash = *msg.salted_node_id_hash();
-        debug!("Received init with stage={}, expected stage={}", stage, self.next_stage);
+        debug!("Received init with stage={}, expected stage={}, {:p}", stage, self.next_stage, self);
         if self.salted_node_id_hash == salted_node_id_hash
             || self.check_salted_node_id_hash(&salted_node_id_hash, self.node_id)
         {
