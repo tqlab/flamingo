@@ -4,7 +4,6 @@
 
 use std::{
     cmp,
-    collections::VecDeque,
     convert::TryInto,
     fmt,
     fs::{self, File},
@@ -292,72 +291,6 @@ impl AsRawFd for TunTapDevice {
     #[inline]
     fn as_raw_fd(&self) -> RawFd {
         self.fd.as_raw_fd()
-    }
-}
-
-pub struct MockDevice {
-    inbound: VecDeque<Vec<u8>>,
-    outbound: VecDeque<Vec<u8>>,
-}
-
-impl MockDevice {
-    pub fn new() -> Self {
-        Default::default()
-    }
-
-    pub fn put_inbound(&mut self, data: Vec<u8>) {
-        self.inbound.push_back(data)
-    }
-
-    pub fn pop_outbound(&mut self) -> Option<Vec<u8>> {
-        self.outbound.pop_front()
-    }
-
-    pub fn has_inbound(&self) -> bool {
-        !self.inbound.is_empty()
-    }
-}
-
-impl Device for MockDevice {
-    fn get_type(&self) -> Type {
-        Type::Tun
-    }
-
-    fn ifname(&self) -> &str {
-        "mock0"
-    }
-
-    fn read(&mut self, buffer: &mut MsgBuffer) -> Result<(), Error> {
-        if let Some(data) = self.inbound.pop_front() {
-            buffer.clear();
-            buffer.set_length(data.len());
-            buffer.message_mut().copy_from_slice(&data);
-            Ok(())
-        } else {
-            Err(Error::Device("empty"))
-        }
-    }
-
-    fn write(&mut self, buffer: &mut MsgBuffer) -> Result<(), Error> {
-        self.outbound.push_back(buffer.message().into());
-        Ok(())
-    }
-
-    fn get_ip(&self) -> Result<Ipv4Addr, Error> {
-        Err(Error::Device("Dummy devices have no IP address"))
-    }
-}
-
-impl Default for MockDevice {
-    fn default() -> Self {
-        Self { outbound: VecDeque::with_capacity(10), inbound: VecDeque::with_capacity(10) }
-    }
-}
-
-impl AsRawFd for MockDevice {
-    #[inline]
-    fn as_raw_fd(&self) -> RawFd {
-        unimplemented!()
     }
 }
 

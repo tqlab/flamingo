@@ -10,7 +10,7 @@ use std::{
     hash::BuildHasherDefault,
     io::{self, Cursor, Seek, SeekFrom, Write},
     marker::PhantomData,
-    net::{SocketAddr, ToSocketAddrs},
+    net::{IpAddr, SocketAddr, ToSocketAddrs},
     path::Path,
     str::FromStr,
 };
@@ -29,7 +29,7 @@ use crate::{
         AddrList, NodeInfo, PeerInfo, MESSAGE_TYPE_CLOSE, MESSAGE_TYPE_DATA, MESSAGE_TYPE_KEEPALIVE,
         MESSAGE_TYPE_NODE_INFO,
     },
-    net::{mapped_addr, parse_listen, Socket},
+    net::{mapped_addr, Socket},
     payload::Protocol,
     poll::{WaitImpl, WaitResult},
     port_forwarding::PortForwarding,
@@ -225,7 +225,9 @@ impl<D: Device, P: Protocol, S: Socket, TS: TimeSource> GenericCloud<D, P, S, TS
         let socket_addr = self.socket.address().map(mapped_addr)?;
         // 1) Specified advertise addresses
         for addr in &self.config.advertise_addresses {
-            self.own_addresses.push(parse_listen(addr, socket_addr.port()));
+            if let Ok(addr) = addr.parse::<IpAddr>() {
+                self.own_addresses.push(SocketAddr::new(addr, socket_addr.port()));
+            }
         }
         // 2) Address of UDP socket
         self.own_addresses.push(socket_addr);
@@ -1001,49 +1003,5 @@ impl<D: Device, P: Protocol, S: Socket, TS: TimeSource> GenericCloud<D, P, S, TS
                 }
             }
         }
-    }
-}
-
-#[cfg(test)]
-use super::device::MockDevice;
-#[cfg(test)]
-use super::net::MockSocket;
-#[cfg(test)]
-use super::util::MockTimeSource;
-
-#[cfg(test)]
-impl<P: Protocol> GenericCloud<MockDevice, P, MockSocket, MockTimeSource> {
-    pub fn socket(&mut self) -> &mut MockSocket {
-        &mut self.socket
-    }
-
-    pub fn device(&mut self) -> &mut MockDevice {
-        &mut self.device
-    }
-
-    pub fn trigger_socket_event(&mut self) {
-        let mut buffer = MsgBuffer::new(SPACE_BEFORE);
-        self.handle_socket_event(&mut buffer);
-    }
-
-    pub fn trigger_device_event(&mut self) {
-        let mut buffer = MsgBuffer::new(SPACE_BEFORE);
-        self.handle_device_event(&mut buffer);
-    }
-
-    pub fn trigger_housekeep(&mut self) {
-        assert!(self.housekeep().is_ok())
-    }
-
-    pub fn is_connected(&self, addr: &SocketAddr) -> bool {
-        self.peers.contains_key(addr)
-    }
-
-    pub fn own_addresses(&self) -> &[SocketAddr] {
-        &self.own_addresses
-    }
-
-    pub fn get_num(&self) -> usize {
-        self.socket.address().unwrap().port() as usize
     }
 }

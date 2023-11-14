@@ -3,14 +3,13 @@
 // This software is licensed under GPL-3 or newer (see LICENSE.md)
 
 use std::{
-    collections::{HashMap, VecDeque},
-    io::{self, ErrorKind},
+    io::{self},
     net::{IpAddr, Ipv6Addr, SocketAddr, UdpSocket},
-    os::unix::io::{AsRawFd, RawFd},
-    sync::atomic::{AtomicBool, Ordering},
+    os::unix::io::AsRawFd,
+    str::FromStr,
 };
 
-use super::util::{MockTimeSource, MsgBuffer, Time, TimeSource};
+use super::util::MsgBuffer;
 use crate::{config::DEFAULT_PORT, port_forwarding::PortForwarding};
 
 pub fn mapped_addr(addr: SocketAddr) -> SocketAddr {
@@ -35,17 +34,12 @@ pub trait Socket: AsRawFd + Sized {
     fn create_port_forwarding(&self) -> Option<PortForwarding>;
 }
 
-pub fn parse_listen(addr: &str, default_port: u16) -> SocketAddr {
-    if let Some(addr) = addr.strip_prefix("*:") {
-        let port = try_fail!(addr.parse::<u16>(), "Invalid port: {}");
-        SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), port)
-    } else if addr.contains(':') {
-        try_fail!(addr.parse::<SocketAddr>(), "Invalid address: {}: {}", addr)
-    } else if let Ok(port) = addr.parse::<u16>() {
-        SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), port)
+pub fn parse_listen(port: &str, default_port: u16) -> SocketAddr {
+    if let Ok(ip_addr) = IpAddr::from_str("::0") {
+        let port = if let Ok(port) = port.parse::<u16>() { port } else { default_port };
+        SocketAddr::new(ip_addr, port)
     } else {
-        let ip = try_fail!(addr.parse::<IpAddr>(), "Invalid addr: {}");
-        SocketAddr::new(ip, default_port)
+        SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), default_port)
     }
 }
 
@@ -74,95 +68,5 @@ impl Socket for UdpSocket {
 
     fn create_port_forwarding(&self) -> Option<PortForwarding> {
         PortForwarding::new(self.address().unwrap().port())
-    }
-}
-
-thread_local! {
-    static MOCK_SOCKET_NAT: AtomicBool = AtomicBool::new(false);
-}
-
-pub struct MockSocket {
-    nat: bool,
-    nat_peers: HashMap<SocketAddr, Time>,
-    address: SocketAddr,
-    outbound: VecDeque<(SocketAddr, Vec<u8>)>,
-    inbound: VecDeque<(SocketAddr, Vec<u8>)>,
-}
-
-impl MockSocket {
-    pub fn new(address: SocketAddr) -> Self {
-        Self {
-            nat: Self::get_nat(),
-            nat_peers: HashMap::new(),
-            address,
-            outbound: VecDeque::with_capacity(10),
-            inbound: VecDeque::with_capacity(10),
-        }
-    }
-
-    pub fn set_nat(nat: bool) {
-        MOCK_SOCKET_NAT.with(|t| t.store(nat, Ordering::SeqCst))
-    }
-
-    pub fn get_nat() -> bool {
-        MOCK_SOCKET_NAT.with(|t| t.load(Ordering::SeqCst))
-    }
-
-    pub fn put_inbound(&mut self, from: SocketAddr, data: Vec<u8>) -> bool {
-        if !self.nat {
-            self.inbound.push_back((from, data));
-            return true;
-        }
-        if let Some(timeout) = self.nat_peers.get(&from) {
-            if *timeout >= MockTimeSource::now() {
-                self.inbound.push_back((from, data));
-                return true;
-            }
-        }
-        warn!("Sender {:?} is filtered out by NAT", from);
-        false
-    }
-
-    pub fn pop_outbound(&mut self) -> Option<(SocketAddr, Vec<u8>)> {
-        self.outbound.pop_front()
-    }
-}
-
-impl AsRawFd for MockSocket {
-    fn as_raw_fd(&self) -> RawFd {
-        unimplemented!()
-    }
-}
-
-impl Socket for MockSocket {
-    fn listen(addr: &str) -> Result<Self, io::Error> {
-        Ok(Self::new(mapped_addr(parse_listen(addr, DEFAULT_PORT))))
-    }
-
-    fn receive(&mut self, buffer: &mut MsgBuffer) -> Result<SocketAddr, io::Error> {
-        if let Some((addr, data)) = self.inbound.pop_front() {
-            buffer.clear();
-            buffer.set_length(data.len());
-            buffer.message_mut().copy_from_slice(&data);
-            Ok(addr)
-        } else {
-            Err(io::Error::new(ErrorKind::Other, "nothing in queue"))
-        }
-    }
-
-    fn send(&mut self, data: &[u8], addr: SocketAddr) -> Result<usize, io::Error> {
-        self.outbound.push_back((addr, data.into()));
-        if self.nat {
-            self.nat_peers.insert(addr, MockTimeSource::now() + 300);
-        }
-        Ok(data.len())
-    }
-
-    fn address(&self) -> Result<SocketAddr, io::Error> {
-        Ok(self.address)
-    }
-
-    fn create_port_forwarding(&self) -> Option<PortForwarding> {
-        None
     }
 }

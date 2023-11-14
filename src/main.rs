@@ -12,9 +12,6 @@ extern crate tempfile;
 
 #[macro_use]
 pub mod util;
-#[cfg(test)]
-#[macro_use]
-mod tests;
 pub mod beacon;
 pub mod cloud;
 pub mod config;
