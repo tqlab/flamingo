@@ -39,9 +39,8 @@ impl<T> IfReq<T> {
 #[derive(Copy, Clone)]
 struct IfReqDataAddr {
     af: libc::c_int,
-    addr: Ipv4Addr
+    addr: Ipv4Addr,
 }
-
 
 /// The type of a tun/tap device
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
@@ -376,10 +375,11 @@ fn set_device_mtu(ifname: &str, mtu: usize) -> io::Result<()> {
 #[allow(clippy::useless_conversion)]
 fn get_device_mtu(ifname: &str) -> io::Result<usize> {
     let sock = UdpSocket::bind("0.0.0.0:0")?;
-    let mut ifreq = IfReq::new(ifname, MaybeUninit::uninit());
+    let mut ifreq = IfReq::new(ifname, 0);
     let res = unsafe { libc::ioctl(sock.as_raw_fd(), libc::SIOCGIFMTU.try_into().unwrap(), &mut ifreq) };
+
     match res {
-        0 => Ok(unsafe { ifreq.data.assume_init() }),
+        0 => Ok(ifreq.data),
         _ => Err(IoError::last_os_error()),
     }
 }
@@ -401,7 +401,7 @@ fn get_device_addr(ifname: &str) -> io::Result<Ipv4Addr> {
 #[allow(clippy::useless_conversion)]
 fn set_device_addr(ifname: &str, addr: Ipv4Addr) -> io::Result<()> {
     let sock = UdpSocket::bind("0.0.0.0:0")?;
-    let mut ifreq = IfReq::new(ifname, IfReqDataAddr { af:  libc::AF_INET, addr });
+    let mut ifreq = IfReq::new(ifname, IfReqDataAddr { af: libc::AF_INET, addr });
     let res = unsafe { libc::ioctl(sock.as_raw_fd(), libc::SIOCSIFADDR.try_into().unwrap(), &mut ifreq) };
 
     info!("get_device_addr: {:?}", get_device_addr(ifname));
@@ -429,7 +429,7 @@ fn get_device_netmask(ifname: &str) -> io::Result<Ipv4Addr> {
 #[allow(clippy::useless_conversion)]
 fn set_device_netmask(ifname: &str, addr: Ipv4Addr) -> io::Result<()> {
     let sock = UdpSocket::bind("0.0.0.0:0")?;
-    let mut ifreq = IfReq::new(ifname, IfReqDataAddr { af:  libc::AF_INET, addr });
+    let mut ifreq = IfReq::new(ifname, IfReqDataAddr { af: libc::AF_INET, addr });
     let res = unsafe { libc::ioctl(sock.as_raw_fd(), libc::SIOCSIFNETMASK.try_into().unwrap(), &mut ifreq) };
     info!("get_device_netmask: {:?}", get_device_netmask(ifname));
     match res {
@@ -473,6 +473,7 @@ fn get_default_device() -> io::Result<String> {
             best = Some(parts[0].to_string())
         }
     }
+
     if let Some(ifname) = best {
         Ok(ifname)
     } else {
