@@ -211,7 +211,6 @@ impl<D: Device, P: Protocol, S: Socket, TS: TimeSource> GenericCloud<D, P, S, TS
     #[inline]
     fn send_msg(&mut self, addr: SocketAddr, type_: u8, msg: &mut MsgBuffer) -> Result<(), Error> {
         // HOT PATH
-        debug!("Sending msg with {} bytes to {}", msg.len(), addr);
         let peer = match self.peers.get_mut(&addr) {
             Some(peer) => peer,
             None => return Err(Error::Message("Sending to node that is not a peer")),
@@ -750,7 +749,7 @@ impl<D: Device, P: Protocol, S: Socket, TS: TimeSource> GenericCloud<D, P, S, TS
         // HOT PATH
         let (src, dst) = P::parse(data.message())?;
         let len = data.len();
-        debug!("Writing data to device: {} bytes", len);
+        debug!("Writing data to device: {} bytes. {} --> {}", len, &src, &dst);
         self.traffic.count_in_payload(src, dst, len);
         if let Err(e) = self.device.write(data) {
             error!("Failed to send via device: {}", e);
@@ -956,6 +955,7 @@ impl<D: Device, P: Protocol, S: Socket, TS: TimeSource> GenericCloud<D, P, S, TS
     /// Also, this method will call `housekeep` every second.
     pub fn run(&mut self) {
         let ctrlc = CtrlC::new();
+
         let waiter = try_fail!(
             WaitImpl::new(self.socket.as_raw_fd(), self.device.as_raw_fd(), 1000),
             "Failed to setup poll: {}"
