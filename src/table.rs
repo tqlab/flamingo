@@ -156,5 +156,3 @@ impl<TS: TimeSource> ClaimTable<TS> {
         Ok(())
     }
 }
-
-// TODO: test

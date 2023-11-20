@@ -33,8 +33,6 @@ signal = "0.7"
 smallvec = "1.7"
 structopt = "0.3"
 thiserror = "1.0"
-tungstenite = {version = "0.20", optional = true}
-url = {version = "2.2", optional = true}
 yaml-rust = "0.4"
 
 [dev-dependencies]
@@ -43,9 +41,8 @@ iai = "0.1"
 tempfile = "3"
 
 [features]
-default = ["nat", "websocket", "wizard"]
+default = ["nat", "wizard"]
 nat = ["igd"]
-websocket = ["tungstenite", "url"]
 wizard = ["dialoguer"]
 
 [profile.release]

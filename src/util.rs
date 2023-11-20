@@ -6,7 +6,6 @@ use std::process::Command;
 use std::{
     fmt,
     net::{Ipv4Addr, SocketAddr, ToSocketAddrs, UdpSocket},
-    sync::atomic::{AtomicIsize, Ordering},
 };
 
 use crate::error::Error;
@@ -305,25 +304,6 @@ impl TimeSource for SystemTimeSource {
     #[cfg(not(target_os = "linux"))]
     fn now() -> Time {
         time::get_time().sec
-    }
-}
-
-thread_local! {
-    static MOCK_TIME: AtomicIsize = AtomicIsize::new(0);
-}
-
-#[derive(Clone, Copy)]
-pub struct MockTimeSource;
-
-impl MockTimeSource {
-    pub fn set_time(time: Time) {
-        MOCK_TIME.with(|t| t.store(time as isize, Ordering::SeqCst))
-    }
-}
-
-impl TimeSource for MockTimeSource {
-    fn now() -> Time {
-        MOCK_TIME.with(|t| t.load(Ordering::SeqCst) as Time)
     }
 }
 
