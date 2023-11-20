@@ -46,8 +46,6 @@ flamingo - Peer-to-peer VPN
   or a full address in form IP:PORT. If the IP is specified as \'\*' or only
   a port number is given, then the socket will listen on all IPs (v4 and v6),
   otherwise the socket will only listen on the given IP.
-  Alternatively, a websocket proxy URL (starting with ws://) can be given 
-  here. Please see the section *WEBSOCKET PROXY* for more info.
   [default: **3210**]
 
 *-c <addr>*, *--peer <addr>*, *--connect <addr>*::
@@ -228,13 +226,6 @@ subcommands.
 
   *-p <password>*, *--password <password>*:::
     Derive the key pair from the given password instead of creating randomly.
-
-*ws-proxy*::
-  Run a websocket proxy instead of the normal Flamingo instance. 
-  See *WEBSOCKET PROXY* for more info.
-
-  *-l <addr>*, *--listen <addr>*:::
-    Listen on the given TCP address (IP:PORT or PORT). [default: **3210**]
 
 *completion*::
   Output shell completions for the Flamingo command.
@@ -497,34 +488,6 @@ last minute:
 
 All keys are prefixed by a common prefix. The prefix defaults to *vpn* but
 can be changed via **--statsd-prefix** or the config option **statsd_prefix**.
-
-
-== WEBSOCKET PROXY
-
-The websocket proxy mode replaces the local UDP port by a websocket proxy to allow
-connectivity even in very restricted environments.
-
-This means that instead of listening on a local port for incoming messages and
-sending outgoing messages via this port, all UDP traffic will be forwarded to and
-received from a remote proxy via the websocket protocol. This proxy opens a UDP 
-port for each Flamingo instance that connects to it. The instance can use this port
-remotely just like it would use a real local UDP port.
-
-The proxy is transparent, it does not manipulate or even decrypt the messages it 
-forwards. Trust relations are still created between Flamingo instances, not between
-an instance and the proxy. The proxy only ever sees encrypted messages. Therefore,
-the connection to it uses plain HTTP.
-
-A websocket proxy can be stared by using the *ws-proxy* subcommand. A custom port 
-can be set using the *--listen* parameter. (Note that this port never conflicts 
-with a Flamingo port on the same machine since Flamingo uses UDP and the proxy uses
-TCP.)
-
-A Flamingo instance can use a websocket proxy instead of opening a local port by 
-specifying the websocket proxy via its *--listen* parameter 
-(e.g. *--listen ws://example.com:3210*). Note that the websocket URL must start with
-*ws:\/\/*, not *http:\/\/*.
-
 
 == HOOK SCRIPTS
 

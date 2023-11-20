@@ -8,13 +8,13 @@ device:
 peers:
   - SERVER-IP:PORT
 ip: 10.0.0.18
-listen: 0.0.0.0:8989
 mode: normal
 ifup: >-
   GATEWAY=$(ip route show default | awk 'NR==1' |awk '/default/ {print $3}') &&
-  ip route add SERVER-IP/32 via $GATEWAY &&
+  PHYSICS_DEV=$(ip route show default | awk 'NR==1' |awk '/default/ {print $5}') &&
+  ip route add SERVER-IP/32 via $GATEWAY dev $PHYSICS_DEV &&
   echo "$GATEWAY" > /tmp/flamingo.$IFNAME.old-gateway &&
-  ip route del default &&
+  ip route del default via $GATEWAY &&
   ip route add default via 10.0.0.1
 ifdown: >-
   GATEWAY=$(cat /tmp/flamingo.$IFNAME.old-gateway) &&
