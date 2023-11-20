@@ -7,9 +7,6 @@ extern crate log;
 #[macro_use]
 extern crate serde;
 
-#[cfg(test)]
-extern crate tempfile;
-
 #[macro_use]
 pub mod util;
 pub mod beacon;
@@ -18,6 +15,7 @@ pub mod config;
 pub mod crypto;
 pub mod device;
 pub mod error;
+pub mod logger;
 pub mod messages;
 pub mod net;
 pub mod payload;
@@ -28,17 +26,17 @@ pub mod traffic;
 pub mod types;
 #[cfg(feature = "wizard")]
 pub mod wizard;
+
 use structopt::StructOpt;
 
 use std::{
     fs::{self, File, Permissions},
-    io::{self, Write},
+    io,
     net::{Ipv4Addr, UdpSocket},
     os::unix::fs::PermissionsExt,
     path::Path,
     process,
     str::FromStr,
-    sync::Mutex,
 };
 
 use crate::{
@@ -50,53 +48,6 @@ use crate::{
     payload::Protocol,
     util::SystemTimeSource,
 };
-
-struct DualLogger {
-    file: Option<Mutex<File>>,
-}
-
-impl DualLogger {
-    pub fn new<P: AsRef<Path>>(path: Option<P>) -> Result<Self, io::Error> {
-        if let Some(path) = path {
-            let path = path.as_ref();
-            if path.exists() {
-                fs::remove_file(path)?
-            }
-            let file = File::create(path)?;
-            Ok(DualLogger { file: Some(Mutex::new(file)) })
-        } else {
-            Ok(DualLogger { file: None })
-        }
-    }
-}
-
-impl log::Log for DualLogger {
-    #[inline]
-    fn enabled(&self, _metadata: &log::Metadata) -> bool {
-        true
-    }
-
-    #[inline]
-    fn log(&self, record: &log::Record) {
-        if self.enabled(record.metadata()) {
-            println!("{} - {}", record.level(), record.args());
-            if let Some(ref file) = self.file {
-                let mut file = file.lock().expect("Lock poisoned");
-                let time = chrono::Local::now().format("%F %H:%M:%S");
-                writeln!(file, "{} - {} - {}", time, record.level(), record.args())
-                    .expect("Failed to write to logfile");
-            }
-        }
-    }
-
-    #[inline]
-    fn flush(&self) {
-        if let Some(ref file) = self.file {
-            let mut file = file.lock().expect("Lock poisoned");
-            try_fail!(file.flush(), "Logging error: {}");
-        }
-    }
-}
 
 fn run_script(script: &str, ifname: &str) {
     let mut cmd = process::Command::new("sh");
@@ -223,16 +174,9 @@ fn main() {
         println!("Flamingo v{}", env!("CARGO_PKG_VERSION"));
         return;
     }
-    let logger = try_fail!(DualLogger::new(args.log_file.as_ref()), "Failed to open logfile: {}");
-    log::set_boxed_logger(Box::new(logger)).unwrap();
-    assert!(!args.verbose || !args.quiet);
-    log::set_max_level(if args.verbose {
-        log::LevelFilter::Debug
-    } else if args.quiet {
-        log::LevelFilter::Error
-    } else {
-        log::LevelFilter::Info
-    });
+
+    logger::init_logger(args.log_file.as_ref(), args.verbose, args.quiet);
+
     if let Some(cmd) = args.cmd {
         match cmd {
             Command::GenKey { password } => {

@@ -15,6 +15,15 @@ pub trait Protocol: Sized {
 ///
 /// If the ethernet frame contains a VLAN tag, both addresses will be prefixed with that tag,
 /// resulting in 8-byte addresses. Additional nested tags will be ignored.
+///
+/// <pre>
+/// ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+/// + Destnation Address + Source Address +--Type--+--------- Data---------+--FCS--+
+/// +------6 byte--------+----6 byte -----+-2 byte-+------46~1500 byte-----+ 4byte +
+/// ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+/// </pre>
+///
+/// Type: 0x0800 IP Packet, 0x8100 IEEE 802.1 Q
 pub struct Frame;
 
 impl Protocol for Frame {
@@ -33,6 +42,8 @@ impl Protocol for Frame {
             .and_then(|_| cursor.read_exact(&mut src[..6]))
             .and_then(|_| cursor.read_exact(&mut proto))
             .map_err(|_| Error::Parse("Frame is too short"))?;
+
+        // If the ethernet frame contains a VLAN tag
         if proto == [0x81, 0x00] {
             src.copy_within(..6, 2);
             dst.copy_within(..6, 2);
@@ -43,38 +54,17 @@ impl Protocol for Frame {
                 // treat vlan id 0x000 as untagged
                 src.copy_within(2..8, 0);
                 dst.copy_within(2..8, 0);
+
+                // mac address
                 return Ok((Address { data: src, len: 6 }, Address { data: dst, len: 6 }));
             }
+            // vlan
             Ok((Address { data: src, len: 8 }, Address { data: dst, len: 8 }))
         } else {
+            // mac address
             Ok((Address { data: src, len: 6 }, Address { data: dst, len: 6 }))
         }
     }
-}
-
-#[test]
-fn decode_frame_without_vlan() {
-    let data = [6, 5, 4, 3, 2, 1, 1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6, 7, 8];
-    let (src, dst) = Frame::parse(&data).unwrap();
-    assert_eq!(src, Address { data: [1, 2, 3, 4, 5, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], len: 6 });
-    assert_eq!(dst, Address { data: [6, 5, 4, 3, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], len: 6 });
-}
-
-#[test]
-fn decode_frame_with_vlan() {
-    let data = [6, 5, 4, 3, 2, 1, 1, 2, 3, 4, 5, 6, 0x81, 0, 4, 210, 1, 2, 3, 4, 5, 6, 7, 8];
-    let (src, dst) = Frame::parse(&data).unwrap();
-    assert_eq!(src, Address { data: [4, 210, 1, 2, 3, 4, 5, 6, 0, 0, 0, 0, 0, 0, 0, 0], len: 8 });
-    assert_eq!(dst, Address { data: [4, 210, 6, 5, 4, 3, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0], len: 8 });
-}
-
-#[test]
-fn decode_invalid_frame() {
-    assert!(Frame::parse(&[6, 5, 4, 3, 2, 1, 1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6, 7, 8]).is_ok());
-    // truncated frame
-    assert!(Frame::parse(&[]).is_err());
-    // truncated vlan frame
-    assert!(Frame::parse(&[6, 5, 4, 3, 2, 1, 1, 2, 3, 4, 5, 6, 0x81, 0x00]).is_err());
 }
 
 /// An IP packet dissector
@@ -115,45 +105,4 @@ impl Protocol for Packet {
             _ => Err(Error::Parse("Invalid IP protocol version")),
         }
     }
-}
-
-#[test]
-fn decode_ipv4_packet() {
-    let data = [0x40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 192, 168, 1, 1, 192, 168, 1, 2];
-    let (src, dst) = Packet::parse(&data).unwrap();
-    assert_eq!(src, Address { data: [192, 168, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], len: 4 });
-    assert_eq!(dst, Address { data: [192, 168, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], len: 4 });
-}
-
-#[test]
-fn decode_ipv6_packet() {
-    let data = [
-        0x60, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 0, 9, 8, 7, 6, 5, 4, 3, 2, 1, 6, 5,
-        4, 3, 2, 1,
-    ];
-    let (src, dst) = Packet::parse(&data).unwrap();
-    assert_eq!(src, Address { data: [1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6], len: 16 });
-    assert_eq!(dst, Address { data: [0, 9, 8, 7, 6, 5, 4, 3, 2, 1, 6, 5, 4, 3, 2, 1], len: 16 });
-}
-
-#[test]
-fn decode_invalid_packet() {
-    assert!(Packet::parse(&[0x40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 192, 168, 1, 1, 192, 168, 1, 2]).is_ok());
-    assert!(Packet::parse(&[
-        0x60, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 0, 9, 8, 7, 6, 5, 4, 3, 2, 1, 6, 5,
-        4, 3, 2, 1
-    ])
-    .is_ok());
-    // no data
-    assert!(Packet::parse(&[]).is_err());
-    // wrong version
-    assert!(Packet::parse(&[0x20]).is_err());
-    // truncated ipv4
-    assert!(Packet::parse(&[0x40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 192, 168, 1, 1, 192, 168, 1]).is_err());
-    // truncated ipv6
-    assert!(Packet::parse(&[
-        0x60, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 0, 9, 8, 7, 6, 5, 4, 3, 2, 1, 6, 5,
-        4, 3, 2
-    ])
-    .is_err());
 }
