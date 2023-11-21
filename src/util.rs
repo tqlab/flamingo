@@ -2,7 +2,7 @@
 // Copyright (C) 2023  John Lee
 // This software is licensed under GPL-3 or newer (see LICENSE.md)
 
-use std::process::Command;
+use std::process::{self, Command};
 use std::{
     fmt,
     net::{Ipv4Addr, SocketAddr, ToSocketAddrs, UdpSocket},
@@ -403,6 +403,20 @@ pub fn run_cmd(mut cmd: Command) {
             }
         }
         Err(e) => error!("Failed to execute command {:?}: {}", cmd, e),
+    }
+}
+
+pub fn run_script(script: &str, ifname: &str) {
+    let mut cmd = process::Command::new("sh");
+    cmd.arg("-c").arg(script).env("IFNAME", ifname);
+    debug!("Running script: {:?}", cmd);
+    match cmd.status() {
+        Ok(status) => {
+            if !status.success() {
+                error!("Script returned with error: {:?}", status.code())
+            }
+        }
+        Err(e) => error!("Failed to execute script {:?}: {}", script, e),
     }
 }
 
