@@ -544,15 +544,6 @@ pub enum Command {
         password: Option<String>,
     },
 
-    /// Run a websocket proxy
-    #[cfg(feature = "websocket")]
-    #[structopt(alias = "wsproxy")]
-    WsProxy {
-        /// Websocket listen address IP:PORT
-        #[structopt(long, short, default_value = "3210")]
-        listen: String,
-    },
-
     /// Generate shell completions
     Completion {
         /// Shell to create completions for

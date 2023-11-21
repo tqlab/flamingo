@@ -86,6 +86,35 @@ pub const MAX_FAILED_RETRIES: usize = 120;
 pub const SALTED_NODE_ID_HASH_LEN: usize = 20;
 pub type SaltedNodeIdHash = [u8; SALTED_NODE_ID_HASH_LEN];
 
+///
+/// 
+/// # ping
+/// ```
+/// +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+/// +-salt-+-hash-+-------stage-------+---node id hash----+----public key-----+-----algorithms----+------signature----+
+/// +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+/// +-salt-+-hash-+-type-+-len-+-data-+-type-+-len-+-data-+-type-+-len-+-data-+-type-+-len-+-data-+-type-+-len-+-data-+
+/// +------+------+--1---+-----+------+--2---+-----+------+--3---+-----+------+--4---+-----+------+--0---+-----+------+  
+/// +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+/// +--4---+--4---+--1---+--2--+--len-+--1---+--2--+--len-+--1---+--2--+--len-+--1---+--2--+--len-+--1---+--2--+--len-+  
+/// +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+/// ```
+/// 
+/// # pong/peng
+/// The payload is encrypted [`crate::messages::NodeInfo`].
+/// ```
+/// +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+/// +-salt-+-hash-+-------stage-------+---node id hash----+------payload------+------signature----+
+/// +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+/// +-salt-+-hash-+-type-+-len-+-data-+-type-+-len-+-data-+-type-+-len-+-data-+-type-+-len-+-data-+
+/// +------+------+--1---+-----+------+--2---+-----+------+--5---+-----+------+--0---+-----+------+  
+/// +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+/// +--4---+--4---+--1---+--2--+--len-+--1---+--2--+--len-+--1---+--2--+--len-+--1---+--2--+--len-+  
+/// +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+/// ```
+/// 
+/// 
+/// 
 #[allow(clippy::large_enum_variant)]
 pub enum InitMsg {
     Ping {
@@ -364,6 +393,7 @@ impl InitMsg {
         w.write_u8(Self::PART_END)?;
 
         let pos = w.position() as usize;
+        // signature
         let signature = key.sign(&w.get_ref()[0..pos]);
         w.write_u8(signature.as_ref().len() as u8)?;
         w.write_all(signature.as_ref())?;
@@ -429,7 +459,7 @@ impl<P: Payload> InitState<P> {
         self.ecdh_private_key = Some(ecdh_private_key);
 
         // create stage 1 msg
-        self.send_message(STAGE_PING, Some(ecdh_public_key), out);
+        self.build_message(STAGE_PING, Some(ecdh_public_key), out);
 
         self.next_stage = STAGE_PONG;
     }
@@ -497,7 +527,7 @@ impl<P: Payload> InitState<P> {
         hash == d.as_ref()
     }
 
-    fn send_message(&mut self, stage: u8, ecdh_public_key: Option<EcdhPublicKey>, out: &mut MsgBuffer) {
+    fn build_message(&mut self, stage: u8, ecdh_public_key: Option<EcdhPublicKey>, out: &mut MsgBuffer) {
         debug!("Sending init with stage={} {:p}", stage, self);
         assert!(out.is_empty());
         let mut public_key = [0; ED25519_PUBLIC_KEY_LEN];
@@ -609,7 +639,7 @@ impl<P: Payload> InitState<P> {
                 }
 
                 // create and send stage 2 reply
-                self.send_message(STAGE_PONG, Some(my_ecdh_public_key), out);
+                self.build_message(STAGE_PONG, Some(my_ecdh_public_key), out);
 
                 self.next_stage = STAGE_PENG;
                 Ok(InitResult::Continue)
@@ -630,7 +660,7 @@ impl<P: Payload> InitState<P> {
                     .map_err(|_| Error::CryptoInitFatal("Failed to decrypt payload"))?;
 
                 // create and send stage 3 reply
-                self.send_message(STAGE_PENG, None, out);
+                self.build_message(STAGE_PENG, None, out);
 
                 self.next_stage = WAITING_TO_CLOSE;
                 self.close_time = 60;
