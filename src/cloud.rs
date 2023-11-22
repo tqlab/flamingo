@@ -131,7 +131,7 @@ impl<D: Device, P: Protocol, S: Socket, TS: TimeSource> GenericCloud<D, P, S, TS
         let now = TS::now();
         let update_freq = config.get_keepalive() as u16;
         let node_id = random();
-        let crypto = Crypto::new(node_id, &config.crypto).unwrap();
+        let crypto = Crypto::new(&config.crypto).unwrap();
         let beacon_key = config.beacon_password.as_ref().map(|s| s.as_bytes()).unwrap_or(&[]);
         let mut res = GenericCloud {
             node_id,
@@ -331,7 +331,7 @@ impl<D: Device, P: Protocol, S: Socket, TS: TimeSource> GenericCloud<D, P, S, TS
         }
         debug!("Connecting to {:?}", addr);
         let payload = self.create_node_info();
-        let mut peer_crypto = self.crypto.peer_instance(payload);
+        let mut peer_crypto = crate::crypto::peer_instance(&self.crypto, self.node_id, payload);
         let mut msg = MsgBuffer::new(SPACE_BEFORE);
         peer_crypto.initialize(&mut msg)?;
         self.pending_inits.insert(addr, peer_crypto);
@@ -858,7 +858,7 @@ impl<D: Device, P: Protocol, S: Socket, TS: TimeSource> GenericCloud<D, P, S, TS
                         }
                     }
                 } else {
-                    let mut init = self.crypto.peer_instance(self.create_node_info());
+                    let mut init = crate::crypto::peer_instance(&self.crypto, self.node_id, self.create_node_info());
                     let msg_result = init.handle_message(data);
                     match msg_result {
                         Ok(res) => {

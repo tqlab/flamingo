@@ -1,4 +1,9 @@
-use crate::{config::Config, crypto::Crypto, device, types::Mode};
+use crate::{
+    config::Config,
+    crypto::{parse_algorithms, Crypto},
+    device,
+    types::Mode,
+};
 use dialoguer::{theme::ColorfulTheme, Confirm, Input, MultiSelect, Password, Select};
 use ring::aead;
 use std::{collections::HashMap, fs, io, os::unix::fs::PermissionsExt, path::Path};
@@ -130,7 +135,7 @@ fn configure_crypto(config: &mut Config, mode: usize, theme: &ColorfulTheme) -> 
         config.crypto.public_key = Some(pub_key);
     }
     if mode == MODE_EXPERT {
-        let (unencrypted, allowed_algos) = Crypto::parse_algorithms(&config.crypto.algorithms)
+        let (unencrypted, allowed_algos) = parse_algorithms(&config.crypto.algorithms)
             .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Invalid crypto algorithms"))?;
         let algos = MultiSelect::with_theme(theme)
             .with_prompt("Allowed encryption algorithms (select multiple)")

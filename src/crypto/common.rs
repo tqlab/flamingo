@@ -58,35 +58,16 @@ pub struct Config {
 }
 
 pub struct Crypto {
-    node_id: NodeId,
     key_pair: Arc<Ed25519KeyPair>,
     trusted_keys: Arc<[Ed25519PublicKey]>,
     algorithms: Algorithms,
 }
 
 impl Crypto {
-    pub fn parse_algorithms(algos: &[String]) -> Result<(bool, Vec<&'static aead::Algorithm>), Error> {
-        let algorithms = algos.iter().map(|a| a as &str).collect::<Vec<_>>();
-        let allowed = if algorithms.is_empty() { &DEFAULT_ALGORITHMS } else { &algorithms as &[&str] };
-        let mut algos = vec![];
-        let mut unencrypted = false;
-        for name in allowed {
-            let algo = match &name.to_uppercase() as &str {
-                "UNENCRYPTED" | "NONE" | "PLAIN" => {
-                    unencrypted = true;
-                    continue;
-                }
-                "AES128" | "AES128_GCM" | "AES_128" | "AES_128_GCM" => &aead::AES_128_GCM,
-                "AES256" | "AES256_GCM" | "AES_256" | "AES_256_GCM" => &aead::AES_256_GCM,
-                "CHACHA" | "CHACHA20" | "CHACHA20_POLY1305" => &aead::CHACHA20_POLY1305,
-                _ => return Err(Error::InvalidConfig("Unknown crypto method")),
-            };
-            algos.push(algo)
-        }
-        Ok((unencrypted, algos))
-    }
-
-    pub fn new(node_id: NodeId, config: &Config) -> Result<Self, Error> {
+    ///
+    ///
+    ///
+    pub fn new(config: &Config) -> Result<Self, Error> {
         let key_pair = if let Some(priv_key) = &config.private_key {
             if let Some(pub_key) = &config.public_key {
                 Self::parse_keypair(priv_key, pub_key)?
@@ -108,7 +89,7 @@ impl Crypto {
             key.clone_from_slice(key_pair.public_key().as_ref());
             trusted_keys.push(key);
         }
-        let (unencrypted, allowed_algos) = Self::parse_algorithms(&config.algorithms)?;
+        let (unencrypted, allowed_algos) = parse_algorithms(&config.algorithms)?;
         if unencrypted {
             warn!("Crypto settings allow unencrypted connections")
         }
@@ -127,7 +108,6 @@ impl Crypto {
             );
         }
         Ok(Self {
-            node_id,
             key_pair: Arc::new(key_pair),
             trusted_keys: trusted_keys.into_boxed_slice().into(),
             algorithms: algos,
@@ -193,14 +173,16 @@ impl Crypto {
         Ok(to_base62(keypair.public_key().as_ref()))
     }
 
-    pub fn peer_instance<P: Payload>(&self, payload: P) -> PeerCrypto<P> {
-        PeerCrypto::new(
-            self.node_id,
-            payload,
-            self.key_pair.clone(),
-            self.trusted_keys.clone(),
-            self.algorithms.clone(),
-        )
+    fn get_key_pair(&self) -> Arc<Ed25519KeyPair> {
+        self.key_pair.clone()
+    }
+
+    fn get_trusted_keys(&self) -> Arc<[Ed25519PublicKey]> {
+        self.trusted_keys.clone()
+    }
+
+    fn get_algorithms(&self) -> Algorithms {
+        self.algorithms.clone()
     }
 }
 
@@ -431,4 +413,35 @@ impl<P: Payload> PeerCrypto<P> {
 pub fn is_init_message(msg: &[u8]) -> bool {
     // HOT PATH
     !msg.is_empty() && msg[0] == INIT_MESSAGE_FIRST_BYTE
+}
+
+///
+///
+///
+pub fn parse_algorithms(algos: &[String]) -> Result<(bool, Vec<&'static aead::Algorithm>), Error> {
+    let algorithms = algos.iter().map(|a| a as &str).collect::<Vec<_>>();
+    let allowed = if algorithms.is_empty() { &DEFAULT_ALGORITHMS } else { &algorithms as &[&str] };
+    let mut algos = vec![];
+    let mut unencrypted = false;
+    for name in allowed {
+        let algo = match &name.to_uppercase() as &str {
+            "UNENCRYPTED" | "NONE" | "PLAIN" => {
+                unencrypted = true;
+                continue;
+            }
+            "AES128" | "AES128_GCM" | "AES_128" | "AES_128_GCM" => &aead::AES_128_GCM,
+            "AES256" | "AES256_GCM" | "AES_256" | "AES_256_GCM" => &aead::AES_256_GCM,
+            "CHACHA" | "CHACHA20" | "CHACHA20_POLY1305" => &aead::CHACHA20_POLY1305,
+            _ => return Err(Error::InvalidConfig("Unknown crypto method")),
+        };
+        algos.push(algo)
+    }
+    Ok((unencrypted, algos))
+}
+
+///
+///
+///
+pub fn peer_instance<P: Payload>(crypto: &Crypto, node_id: NodeId, payload: P) -> PeerCrypto<P> {
+    PeerCrypto::new(node_id, payload, crypto.get_key_pair(), crypto.get_trusted_keys(), crypto.get_algorithms())
 }
