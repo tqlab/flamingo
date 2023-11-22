@@ -1,19 +1,19 @@
 use super::{
     core::CryptoCore,
     init::{self, InitResult, InitState, CLOSING},
+    random_data,
     rotate::RotationState,
-    EXTRA_LEN, random_data,
+    EXTRA_LEN,
 };
 use crate::{
     error::Error,
     types::NodeId,
-    util::{from_base62, to_base62, MsgBuffer},
+    util::{from_base62, MsgBuffer},
 };
 use ring::{
     aead::{self, Algorithm, LessSafeKey, UnboundKey},
     agreement::{EphemeralPrivateKey, UnparsedPublicKey},
     pbkdf2,
-    rand::{SecureRandom, SystemRandom},
     signature::{Ed25519KeyPair, KeyPair, ED25519_PUBLIC_KEY_LEN},
 };
 use smallvec::{smallvec, SmallVec};
@@ -58,8 +58,6 @@ pub struct Algorithms {
 #[serde(rename_all = "kebab-case", deny_unknown_fields, default)]
 pub struct Config {
     pub password: Option<String>,
-    pub private_key: Option<String>,
-    pub public_key: Option<String>,
     pub trusted_keys: Vec<String>,
     pub algorithms: Vec<String>,
 }
@@ -75,13 +73,7 @@ impl Crypto {
     ///
     ///
     pub fn new(config: &Config) -> Result<Self, Error> {
-        let key_pair = if let Some(priv_key) = &config.private_key {
-            if let Some(pub_key) = &config.public_key {
-                Self::parse_keypair(priv_key, pub_key)?
-            } else {
-                Self::parse_private_key(priv_key)?
-            }
-        } else if let Some(password) = &config.password {
+        let key_pair = if let Some(password) = &config.password {
             Self::keypair_from_password(password)
         } else {
             return Err(Error::InvalidConfig("Either private_key or password must be set"));
@@ -121,48 +113,10 @@ impl Crypto {
         })
     }
 
-    pub fn generate_keypair(password: Option<&str>) -> (String, String) {
-        let mut bytes = [0; 32];
-        match password {
-            None => {
-                let rng = SystemRandom::new();
-                rng.fill(&mut bytes).unwrap();
-            }
-            Some(password) => {
-                pbkdf2::derive(
-                    pbkdf2::PBKDF2_HMAC_SHA256,
-                    NonZeroU32::new(4096).unwrap(),
-                    SALT,
-                    password.as_bytes(),
-                    &mut bytes,
-                );
-            }
-        }
-        let keypair = Ed25519KeyPair::from_seed_unchecked(&bytes).unwrap();
-        let privkey = to_base62(&bytes);
-        let pubkey = to_base62(keypair.public_key().as_ref());
-        (privkey, pubkey)
-    }
-
     fn keypair_from_password(password: &str) -> Ed25519KeyPair {
         let mut key = [0; 32];
         pbkdf2::derive(pbkdf2::PBKDF2_HMAC_SHA256, NonZeroU32::new(4096).unwrap(), SALT, password.as_bytes(), &mut key);
         Ed25519KeyPair::from_seed_unchecked(&key).unwrap()
-    }
-
-    fn parse_keypair(privkey: &str, pubkey: &str) -> Result<Ed25519KeyPair, Error> {
-        let privkey = from_base62(privkey).map_err(|_| Error::InvalidConfig("Failed to parse private key"))?;
-        let pubkey = from_base62(pubkey).map_err(|_| Error::InvalidConfig("Failed to parse public key"))?;
-        let keypair = Ed25519KeyPair::from_seed_and_public_key(&privkey, &pubkey)
-            .map_err(|_| Error::InvalidConfig("Keys rejected by crypto library"))?;
-        Ok(keypair)
-    }
-
-    fn parse_private_key(privkey: &str) -> Result<Ed25519KeyPair, Error> {
-        let privkey = from_base62(privkey).map_err(|_| Error::InvalidConfig("Failed to parse private key"))?;
-        let keypair = Ed25519KeyPair::from_seed_unchecked(&privkey)
-            .map_err(|_| Error::InvalidConfig("Key rejected by crypto library"))?;
-        Ok(keypair)
     }
 
     fn parse_public_key(pubkey: &str) -> Result<Ed25519PublicKey, Error> {
@@ -173,11 +127,6 @@ impl Crypto {
         let mut result = [0; ED25519_PUBLIC_KEY_LEN];
         result.clone_from_slice(&pubkey);
         Ok(result)
-    }
-
-    pub fn public_key_from_private_key(privkey: &str) -> Result<String, Error> {
-        let keypair = Self::parse_private_key(privkey)?;
-        Ok(to_base62(keypair.public_key().as_ref()))
     }
 
     fn get_key_pair(&self) -> Arc<Ed25519KeyPair> {

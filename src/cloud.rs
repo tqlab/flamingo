@@ -36,7 +36,7 @@ use crate::{
     table::ClaimTable,
     traffic::TrafficStats,
     types::{Address, Mode, NodeId, Range, RangeList},
-    util::{addr_nice, bytes_to_hex, resolve, CtrlC, Duration, MsgBuffer, StatsdMsg, Time, TimeSource},
+    util::{addr_nice, bytes_to_hex, resolve, CtrlC, Duration, MsgBuffer, Time, TimeSource},
 };
 
 pub type Hash = BuildHasherDefault<FnvHasher>;
@@ -85,7 +85,6 @@ pub struct GenericCloud<D: Device, P: Protocol, S: Socket, TS: TimeSource> {
     peer_timeout_publish: u16,
     update_freq: u16,
     stats_file: Option<File>,
-    statsd_server: Option<String>,
     next_housekeep: Time,
     next_stats_out: Time,
     next_beacon: Time,
@@ -149,7 +148,6 @@ impl<D: Device, P: Protocol, S: Socket, TS: TimeSource> GenericCloud<D, P, S, TS
             next_peers: now,
             update_freq,
             stats_file,
-            statsd_server: config.statsd_server.clone(),
             next_housekeep: now,
             next_stats_out: now + STATS_INTERVAL,
             next_beacon: now,
@@ -458,7 +456,6 @@ impl<D: Device, P: Protocol, S: Socket, TS: TimeSource> GenericCloud<D, P, S, TS
         if self.next_stats_out < now {
             // Write out the statistics
             self.write_out_stats().map_err(|err| Error::FileIo("Failed to write stats file", err))?;
-            self.send_stats_to_statsd()?;
             self.next_stats_out = now + STATS_INTERVAL;
             self.traffic.period(Some(5));
         }
@@ -546,65 +543,6 @@ impl<D: Device, P: Protocol, S: Socket, TS: TimeSource> GenericCloud<D, P, S, TS
             writeln!(f)?;
             self.traffic.write_out(f)?;
             writeln!(f)?;
-        }
-        Ok(())
-    }
-
-    /// Sends the statistics to a statsd endpoint
-    fn send_stats_to_statsd(&mut self) -> Result<(), Error> {
-        if let Some(ref endpoint) = self.statsd_server {
-            let peer_traffic = self.traffic.total_peer_traffic();
-            let payload_traffic = self.traffic.total_payload_traffic();
-            let dropped = &self.traffic.dropped;
-            let prefix = self.config.statsd_prefix.as_ref().map(|s| s as &str).unwrap_or("flamingo");
-            let msg = StatsdMsg::new()
-                .with_ns(prefix, |msg| {
-                    msg.add("peer_count", self.peers.len(), "g");
-                    msg.add("table_cache_entries", self.table.cache_len(), "g");
-                    msg.add("table_claims", self.table.claim_len(), "g");
-                    msg.with_ns("traffic", |msg| {
-                        msg.with_ns("protocol", |msg| {
-                            msg.with_ns("inbound", |msg| {
-                                msg.add("bytes", peer_traffic.in_bytes, "c");
-                                msg.add("packets", peer_traffic.in_packets, "c");
-                            });
-                            msg.with_ns("outbound", |msg| {
-                                msg.add("bytes", peer_traffic.out_bytes, "c");
-                                msg.add("packets", peer_traffic.out_packets, "c");
-                            });
-                        });
-                        msg.with_ns("payload", |msg| {
-                            msg.with_ns("inbound", |msg| {
-                                msg.add("bytes", payload_traffic.in_bytes, "c");
-                                msg.add("packets", payload_traffic.in_packets, "c");
-                            });
-                            msg.with_ns("outbound", |msg| {
-                                msg.add("bytes", payload_traffic.out_bytes, "c");
-                                msg.add("packets", payload_traffic.out_packets, "c");
-                            });
-                        });
-                    });
-                    msg.with_ns("invalid_protocol_traffic", |msg| {
-                        msg.add("bytes", dropped.in_bytes, "c");
-                        msg.add("packets", dropped.in_packets, "c");
-                    });
-                    msg.with_ns("dropped_payload", |msg| {
-                        msg.add("bytes", dropped.out_bytes, "c");
-                        msg.add("packets", dropped.out_packets, "c");
-                    });
-                })
-                .build();
-            let msg_data = msg.as_bytes();
-            let addrs = resolve(endpoint)?;
-            if let Some(addr) = addrs.first() {
-                match self.socket.send(msg_data, *addr) {
-                    Ok(written) if written == msg_data.len() => Ok(()),
-                    Ok(_) => Err(Error::Socket("Sent out truncated packet")),
-                    Err(e) => Err(Error::SocketIo("IOError when sending", e)),
-                }?
-            } else {
-                error!("Failed to resolve statsd server {}", endpoint);
-            }
         }
         Ok(())
     }

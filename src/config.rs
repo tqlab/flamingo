@@ -6,7 +6,7 @@ use super::{device::Type, types::Mode, util::run_cmd, util::Duration};
 pub use crate::crypto::Config as CryptoConfig;
 
 use std::{cmp::max, collections::HashMap, ffi::OsStr, process, thread};
-use structopt::{clap::Shell, StructOpt};
+use structopt::StructOpt;
 
 pub const DEFAULT_PEER_TIMEOUT: u16 = 300;
 pub const DEFAULT_PORT: u16 = 3210;
@@ -41,8 +41,6 @@ pub struct Config {
     pub daemonize: bool,
     pub pid_file: Option<String>,
     pub stats_file: Option<String>,
-    pub statsd_server: Option<String>,
-    pub statsd_prefix: Option<String>,
     pub user: Option<String>,
     pub group: Option<String>,
     pub hook: Option<String>,
@@ -77,8 +75,6 @@ impl Default for Config {
             daemonize: false,
             pid_file: None,
             stats_file: None,
-            statsd_server: None,
-            statsd_prefix: None,
             user: None,
             group: None,
             hook: None,
@@ -163,14 +159,6 @@ impl Config {
         if let Some(val) = file.stats_file {
             self.stats_file = Some(val);
         }
-        if let Some(statsd) = file.statsd {
-            if let Some(val) = statsd.server {
-                self.statsd_server = Some(val);
-            }
-            if let Some(val) = statsd.prefix {
-                self.statsd_prefix = Some(val);
-            }
-        }
         if let Some(val) = file.user {
             self.user = Some(val);
         }
@@ -179,12 +167,6 @@ impl Config {
         }
         if let Some(val) = file.crypto.password {
             self.crypto.password = Some(val)
-        }
-        if let Some(val) = file.crypto.public_key {
-            self.crypto.public_key = Some(val)
-        }
-        if let Some(val) = file.crypto.private_key {
-            self.crypto.private_key = Some(val)
         }
         self.crypto.trusted_keys.append(&mut file.crypto.trusted_keys);
         if !file.crypto.algorithms.is_empty() {
@@ -198,64 +180,7 @@ impl Config {
         }
     }
 
-    pub fn merge_args(&mut self, mut args: Args) {
-        if let Some(val) = args.type_ {
-            self.device_type = val;
-        }
-        if let Some(val) = args.device {
-            self.device_name = val;
-        }
-        if let Some(val) = args.device_path {
-            self.device_path = Some(val);
-        }
-        if args.fix_rp_filter {
-            self.fix_rp_filter = true;
-        }
-        if let Some(val) = args.ip {
-            self.ip = Some(val);
-        }
-        if let Some(val) = args.ifup {
-            self.ifup = Some(val);
-        }
-        self.advertise_addresses.append(&mut args.advertise_addresses);
-        if let Some(val) = args.ifdown {
-            self.ifdown = Some(val);
-        }
-        if let Some(val) = args.listen {
-            self.listen = val;
-        }
-        self.peers.append(&mut args.peers);
-        if let Some(val) = args.peer_timeout {
-            self.peer_timeout = val;
-        }
-        if let Some(val) = args.keepalive {
-            self.keepalive = Some(val);
-        }
-        if let Some(val) = args.beacon_store {
-            self.beacon_store = Some(val);
-        }
-        if let Some(val) = args.beacon_load {
-            self.beacon_load = Some(val);
-        }
-        if let Some(val) = args.beacon_interval {
-            self.beacon_interval = val;
-        }
-        if let Some(val) = args.beacon_password {
-            self.beacon_password = Some(val);
-        }
-        if let Some(val) = args.mode {
-            self.mode = val;
-        }
-        if let Some(val) = args.switch_timeout {
-            self.switch_timeout = val;
-        }
-        self.claims.append(&mut args.claims);
-        if args.no_auto_claim {
-            self.auto_claim = false;
-        }
-        if args.no_port_forwarding {
-            self.port_forwarding = false;
-        }
+    pub fn merge_args(&mut self, args: Args) {
         if args.daemon {
             self.daemonize = true;
         }
@@ -265,40 +190,11 @@ impl Config {
         if let Some(val) = args.stats_file {
             self.stats_file = Some(val);
         }
-        if let Some(val) = args.statsd_server {
-            self.statsd_server = Some(val);
-        }
-        if let Some(val) = args.statsd_prefix {
-            self.statsd_prefix = Some(val);
-        }
         if let Some(val) = args.user {
             self.user = Some(val);
         }
         if let Some(val) = args.group {
             self.group = Some(val);
-        }
-        if let Some(val) = args.password {
-            self.crypto.password = Some(val)
-        }
-        if let Some(val) = args.public_key {
-            self.crypto.public_key = Some(val)
-        }
-        if let Some(val) = args.private_key {
-            self.crypto.private_key = Some(val)
-        }
-        self.crypto.trusted_keys.append(&mut args.trusted_keys);
-        if !args.algorithms.is_empty() {
-            self.crypto.algorithms = args.algorithms.clone();
-        }
-        for s in args.hook {
-            if s.contains(':') {
-                let pos = s.find(':').unwrap();
-                let name = &s[..pos];
-                let hook = &s[pos + 1..];
-                self.hooks.insert(name.to_string(), hook.to_string());
-            } else {
-                self.hook = Some(s);
-            }
         }
     }
 
@@ -333,7 +229,6 @@ impl Config {
             pid_file: self.pid_file,
             port_forwarding: Some(self.port_forwarding),
             stats_file: self.stats_file,
-            statsd: Some(ConfigFileStatsd { server: self.statsd_server, prefix: self.statsd_prefix }),
             switch_timeout: Some(self.switch_timeout),
             hook: self.hook,
             hooks: self.hooks,
@@ -378,90 +273,6 @@ pub struct Args {
     #[structopt(long)]
     pub config: Option<String>,
 
-    /// Set the type of network
-    #[structopt(name = "type", short, long, possible_values=&["tun", "tap"])]
-    pub type_: Option<Type>,
-
-    /// Set the path of the base device
-    #[structopt(long)]
-    pub device_path: Option<String>,
-
-    /// Fix the rp_filter settings on the host
-    #[structopt(long)]
-    pub fix_rp_filter: bool,
-
-    /// The mode of the VPN
-    #[structopt(short, long, possible_values=&["normal", "router", "switch", "hub"])]
-    pub mode: Option<Mode>,
-
-    /// The shared password to encrypt all traffic
-    #[structopt(short, long, env)]
-    pub password: Option<String>,
-
-    /// The private key to use
-    #[structopt(long, alias = "key", conflicts_with = "password", env)]
-    pub private_key: Option<String>,
-
-    /// The public key to use
-    #[structopt(long)]
-    pub public_key: Option<String>,
-
-    /// Other public keys to trust
-    #[structopt(long = "trusted-key", alias = "trust", use_delimiter = true)]
-    pub trusted_keys: Vec<String>,
-
-    /// Algorithms to allow
-    #[structopt(long = "algorithm", alias = "algo", use_delimiter=true, case_insensitive = true, possible_values=&["plain", "aes128", "aes256", "chacha20"])]
-    pub algorithms: Vec<String>,
-
-    /// The local subnets to claim (IP or IP/prefix)
-    #[structopt(long = "claim", use_delimiter = true)]
-    pub claims: Vec<String>,
-
-    /// Do not automatically claim the device ip
-    #[structopt(long)]
-    pub no_auto_claim: bool,
-
-    /// Name of the virtual device
-    #[structopt(short, long)]
-    pub device: Option<String>,
-
-    /// The port number (or ip:port) on which to listen for data
-    #[structopt(short, long)]
-    pub listen: Option<String>,
-
-    /// Address of a peer to connect to
-    #[structopt(short = "c", long = "peer", alias = "connect")]
-    pub peers: Vec<String>,
-
-    /// Peer timeout in seconds
-    #[structopt(long)]
-    pub peer_timeout: Option<Duration>,
-
-    /// Periodically send message to keep connections alive
-    #[structopt(long)]
-    pub keepalive: Option<Duration>,
-
-    /// Switch table entry timeout in seconds
-    #[structopt(long)]
-    pub switch_timeout: Option<Duration>,
-
-    /// The file path or |command to store the beacon
-    #[structopt(long)]
-    pub beacon_store: Option<String>,
-
-    /// The file path or |command to load the beacon
-    #[structopt(long)]
-    pub beacon_load: Option<String>,
-
-    /// Beacon store/load interval in seconds
-    #[structopt(long)]
-    pub beacon_interval: Option<Duration>,
-
-    /// Password to encrypt the beacon with
-    #[structopt(long)]
-    pub beacon_password: Option<String>,
-
     /// Print debug information
     #[structopt(short, long, conflicts_with = "quiet")]
     pub verbose: bool,
@@ -470,29 +281,9 @@ pub struct Args {
     #[structopt(short, long)]
     pub quiet: bool,
 
-    /// An IP address (plus optional prefix length) for the interface
-    #[structopt(long)]
-    pub ip: Option<String>,
-
-    /// A list of IP Addresses to advertise as our external address(s)
-    #[structopt(long = "advertise_addresses", use_delimiter = true)]
-    pub advertise_addresses: Vec<String>,
-
-    /// A command to setup the network interface
-    #[structopt(long)]
-    pub ifup: Option<String>,
-
-    /// A command to bring down the network interface
-    #[structopt(long)]
-    pub ifdown: Option<String>,
-
     /// Print the version and exit
     #[structopt(long)]
     pub version: bool,
-
-    /// Disable automatic port forwarding
-    #[structopt(long)]
-    pub no_port_forwarding: bool,
 
     /// Run the process in the background
     #[structopt(long)]
@@ -506,14 +297,6 @@ pub struct Args {
     #[structopt(long)]
     pub stats_file: Option<String>,
 
-    /// Send statistics to this statsd server
-    #[structopt(long)]
-    pub statsd_server: Option<String>,
-
-    /// Use the given prefix for statsd records
-    #[structopt(long, requires = "statsd-server")]
-    pub statsd_prefix: Option<String>,
-
     /// Run as other user
     #[structopt(long)]
     pub user: Option<String>,
@@ -525,39 +308,6 @@ pub struct Args {
     /// Print logs also to this file
     #[structopt(long)]
     pub log_file: Option<String>,
-
-    /// Call script on event
-    #[structopt(long)]
-    pub hook: Vec<String>,
-
-    #[structopt(subcommand)]
-    pub cmd: Option<Command>,
-}
-
-#[derive(StructOpt, Debug)]
-pub enum Command {
-    /// Generate and print a key-pair and exit
-    #[structopt(name = "genkey", alias = "gen-key")]
-    GenKey {
-        /// The shared password to encrypt all traffic
-        #[structopt(short, long, env)]
-        password: Option<String>,
-    },
-
-    /// Generate shell completions
-    Completion {
-        /// Shell to create completions for
-        #[structopt(long, default_value = "bash")]
-        shell: Shell,
-    },
-
-    /// Edit the config of a network
-    #[cfg(feature = "wizard")]
-    Config {
-        /// Name of the network
-        #[structopt(short, long)]
-        name: Option<String>,
-    },
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Default)]
@@ -577,13 +327,6 @@ pub struct ConfigFileBeacon {
     pub load: Option<String>,
     pub interval: Option<Duration>,
     pub password: Option<String>,
-}
-
-#[derive(Serialize, Deserialize, Debug, PartialEq, Default)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields, default)]
-pub struct ConfigFileStatsd {
-    pub server: Option<String>,
-    pub prefix: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Default)]
@@ -610,7 +353,6 @@ pub struct ConfigFile {
     pub port_forwarding: Option<bool>,
     pub pid_file: Option<String>,
     pub stats_file: Option<String>,
-    pub statsd: Option<ConfigFileStatsd>,
     pub user: Option<String>,
     pub group: Option<String>,
     pub hook: Option<String>,

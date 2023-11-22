@@ -24,14 +24,11 @@ pub mod port_forwarding;
 pub mod table;
 pub mod traffic;
 pub mod types;
-#[cfg(feature = "wizard")]
-pub mod wizard;
 
 use structopt::StructOpt;
 
 use std::{
     fs::{self, File, Permissions},
-    io,
     net::UdpSocket,
     os::unix::fs::PermissionsExt,
     path::Path,
@@ -39,8 +36,7 @@ use std::{
 
 use crate::{
     cloud::GenericCloud,
-    config::{Args, Command, Config, DEFAULT_PORT},
-    crypto::Crypto,
+    config::{Args, Config, DEFAULT_PORT},
     device::{TunTapDevice, Type},
     net::Socket,
     payload::Protocol,
@@ -113,27 +109,13 @@ fn main() {
         return;
     }
 
-    logger::init_logger(args.log_file.as_ref(), args.verbose, args.quiet);
-
-    if let Some(cmd) = args.cmd {
-        match cmd {
-            Command::GenKey { password } => {
-                let (privkey, pubkey) = Crypto::generate_keypair(password.as_deref());
-                println!("Private key: {}\nPublic key: {}\n", privkey, pubkey);
-                println!(
-                    "Attention: Keep the private key secret and use only the public key on other nodes to establish trust."
-                );
-            }
-            Command::Completion { shell } => {
-                Args::clap().gen_completions_to(env!("CARGO_PKG_NAME"), shell, &mut io::stdout());
-            }
-            #[cfg(feature = "wizard")]
-            Command::Config { name } => {
-                try_fail!(wizard::configure(name), "Wizard failed: {}");
-            }
-        }
+    if args.config.is_none() {
+        error!("config file must be given as parameter");
         return;
     }
+
+    logger::init_logger(args.log_file.as_ref(), args.verbose, args.quiet);
+
     let mut config = Config::default();
     if let Some(ref file) = args.config {
         info!("Reading config file '{}'", file);
@@ -143,8 +125,8 @@ fn main() {
     }
     config.merge_args(args);
     debug!("Config: {:?}", config);
-    if config.crypto.password.is_none() && config.crypto.private_key.is_none() {
-        error!("Either password or private key must be set in config or given as parameter");
+    if config.crypto.password.is_none() {
+        error!("password must be set in config or given as parameter");
         return;
     }
 

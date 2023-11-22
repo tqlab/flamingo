@@ -19,7 +19,6 @@ upx_version = "4.0.1"
 byteorder = "1.4"
 chrono = {version = "0.4", features = ["std", "clock"], default_features = false}
 daemonize = "0.5"
-dialoguer = {version = "0.11", optional = true}
 fnv = "1"
 igd = {version = "0.12", optional = true}
 libc = "0.2"
@@ -40,9 +39,8 @@ criterion = {version = "0.5", features = ["html_reports"]}
 iai = "0.1"
 
 [features]
-default = ["nat", "wizard"]
+default = ["nat"]
 nat = ["igd"]
-wizard = ["dialoguer"]
 
 [profile.release]
 lto = true
