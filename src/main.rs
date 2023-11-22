@@ -24,6 +24,7 @@ pub mod port_forwarding;
 pub mod table;
 pub mod traffic;
 pub mod types;
+pub mod peer;
 
 use structopt::StructOpt;
 

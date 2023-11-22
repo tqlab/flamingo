@@ -31,6 +31,7 @@ use crate::{
     },
     net::{mapped_addr, Socket},
     payload::Protocol,
+    peer::PeerData,
     poll::{WaitImpl, WaitResult},
     port_forwarding::PortForwarding,
     table::ClaimTable,
@@ -47,16 +48,6 @@ pub const STATS_INTERVAL: Time = 60;
 const OWN_ADDRESS_RESET_INTERVAL: Time = 300;
 const SPACE_BEFORE: usize = 100;
 
-struct PeerData {
-    addrs: AddrList,
-    #[allow(dead_code)] //TODO: export in status
-    last_seen: Time,
-    timeout: Time,
-    peer_timeout: u16,
-    node_id: NodeId,
-    crypto: PeerCrypto<NodeInfo>,
-}
-
 #[derive(Clone)]
 pub struct ReconnectEntry {
     address: Option<(String, Time)>,
@@ -72,7 +63,7 @@ pub struct GenericCloud<D: Device, P: Protocol, S: Socket, TS: TimeSource> {
     config: Config,
     learning: bool,
     broadcast: bool,
-    peers: HashMap<SocketAddr, PeerData, Hash>,
+    peers: HashMap<SocketAddr, PeerData<NodeInfo, TS>, Hash>,
     reconnect_peers: SmallVec<[ReconnectEntry; 3]>,
     own_addresses: AddrList,
     pending_inits: HashMap<SocketAddr, PeerCrypto<NodeInfo>, Hash>,
@@ -179,11 +170,11 @@ impl<D: Device, P: Protocol, S: Socket, TS: TimeSource> GenericCloud<D, P, S, TS
     fn broadcast_msg(&mut self, type_: u8, msg: &mut MsgBuffer) -> Result<(), Error> {
         debug!("Broadcasting message type {}, {:?} bytes to {} peers", type_, msg.len(), self.peers.len());
         let mut msg_data = MsgBuffer::new(100);
-        for (addr, peer) in &mut self.peers {
+        for (addr, peer_data) in &mut self.peers {
             msg_data.set_start(msg.get_start());
             msg_data.set_length(msg.len());
             msg_data.message_mut().clone_from_slice(msg.message());
-            peer.crypto.send_message(type_, &mut msg_data)?;
+            peer_data.send_message(type_, &mut msg_data)?;
             self.traffic.count_out_traffic(*addr, msg_data.len());
             match self.socket.send(msg_data.message(), *addr) {
                 Ok(written) if written == msg_data.len() => Ok(()),
@@ -209,12 +200,12 @@ impl<D: Device, P: Protocol, S: Socket, TS: TimeSource> GenericCloud<D, P, S, TS
     #[inline]
     fn send_msg(&mut self, addr: SocketAddr, type_: u8, msg: &mut MsgBuffer) -> Result<(), Error> {
         // HOT PATH
-        let peer = match self.peers.get_mut(&addr) {
-            Some(peer) => peer,
-            None => return Err(Error::Message("Sending to node that is not a peer")),
-        };
-        peer.crypto.send_message(type_, msg)?;
-        self.send_to(addr, msg)
+        if let Some(peer_data) = self.peers.get_mut(&addr) {
+            peer_data.send_message(type_, msg)?;
+            self.send_to(addr, msg)
+        } else {
+            Err(Error::Message("Sending to node that is not a peer"))
+        }
     }
 
     pub fn reset_own_addresses(&mut self) -> io::Result<()> {
@@ -302,8 +293,8 @@ impl<D: Device, P: Protocol, S: Socket, TS: TimeSource> GenericCloud<D, P, S, TS
 
     fn create_node_info(&self) -> NodeInfo {
         let mut peers = smallvec![];
-        for peer in self.peers.values() {
-            peers.push(PeerInfo { node_id: Some(peer.node_id), addrs: peer.addrs.clone() })
+        for peer_data in self.peers.values() {
+            peers.push(PeerInfo { node_id: Some(peer_data.get_node_id()), addrs: peer_data.get_addrs().clone() })
         }
         if peers.len() > 20 {
             let mut rng = rand::thread_rng();
@@ -339,22 +330,27 @@ impl<D: Device, P: Protocol, S: Socket, TS: TimeSource> GenericCloud<D, P, S, TS
     fn crypto_housekeep(&mut self) -> Result<(), Error> {
         let mut msg = MsgBuffer::new(SPACE_BEFORE);
         let mut del: SmallVec<[SocketAddr; 4]> = smallvec![];
+
+        // pending init peers
         for addr in self.pending_inits.keys().copied().collect::<SmallVec<[SocketAddr; 4]>>() {
-            msg.clear();
-            match self.pending_inits.get_mut(&addr).unwrap().every_second(&mut msg) {
-                Err(_) => del.push(addr),
-                Ok(MessageResult::None) => (),
-                Ok(MessageResult::Reply) => self.send_to(addr, &mut msg)?,
-                Ok(_) => unreachable!(),
+            if let Some(peer) = self.pending_inits.get_mut(&addr) {
+                match peer.every_second(&mut msg) {
+                    Err(_) => del.push(addr),
+                    Ok(MessageResult::None) => (),
+                    Ok(MessageResult::Reply) => self.send_to(addr, &mut msg)?,
+                    Ok(_) => unreachable!(),
+                }
             }
         }
+        // initialized peers
         for addr in self.peers.keys().copied().collect::<SmallVec<[SocketAddr; 16]>>() {
-            msg.clear();
-            match self.peers.get_mut(&addr).unwrap().crypto.every_second(&mut msg) {
-                Err(_) => del.push(addr),
-                Ok(MessageResult::None) => (),
-                Ok(MessageResult::Reply) => self.send_to(addr, &mut msg)?,
-                Ok(_) => unreachable!(),
+            if let Some(peer_data) = self.peers.get_mut(&addr) {
+                match peer_data.every_second(&mut msg) {
+                    Err(_) => del.push(addr),
+                    Ok(MessageResult::None) => (),
+                    Ok(MessageResult::Reply) => self.send_to(addr, &mut msg)?,
+                    Ok(_) => unreachable!(),
+                }
             }
         }
         for addr in del {
@@ -423,8 +419,8 @@ impl<D: Device, P: Protocol, S: Socket, TS: TimeSource> GenericCloud<D, P, S, TS
         let now = TS::now();
         let mut buffer = MsgBuffer::new(SPACE_BEFORE);
         let mut del: SmallVec<[SocketAddr; 3]> = SmallVec::new();
-        for (&addr, data) in &self.peers {
-            if data.timeout < now {
+        for (&addr, peer_data) in &self.peers {
+            if peer_data.get_timeout() < now {
                 del.push(addr);
             }
         }
@@ -448,7 +444,8 @@ impl<D: Device, P: Protocol, S: Socket, TS: TimeSource> GenericCloud<D, P, S, TS
             info.encode(&mut buffer);
             self.broadcast_msg(MESSAGE_TYPE_NODE_INFO, &mut buffer)?;
             // Reschedule for next update
-            let min_peer_timeout = self.peers.iter().map(|p| p.1.peer_timeout).min().unwrap_or(DEFAULT_PEER_TIMEOUT);
+            let min_peer_timeout =
+                self.peers.iter().map(|p| p.1.get_peer_timeout()).min().unwrap_or(DEFAULT_PEER_TIMEOUT);
             let interval = min(self.update_freq, max(min_peer_timeout / 2 - 60, 1));
             self.next_peers = now + Time::from(interval);
         }
@@ -529,13 +526,13 @@ impl<D: Device, P: Protocol, S: Socket, TS: TimeSource> GenericCloud<D, P, S, TS
             f.set_len(0)?;
             writeln!(f, "peers:")?;
             let now = TS::now();
-            for (addr, data) in &self.peers {
+            for (addr, peer_data) in &self.peers {
                 writeln!(
                     f,
                     "  - \"{}\": {{ ttl_secs: {}, crypto: {} }}",
                     addr_nice(*addr),
-                    data.timeout - now,
-                    data.crypto.algorithm_name()
+                    peer_data.get_timeout() - now,
+                    peer_data.algorithm_name()
                 )?;
             }
             writeln!(f)?;
@@ -596,14 +593,13 @@ impl<D: Device, P: Protocol, S: Socket, TS: TimeSource> GenericCloud<D, P, S, TS
         if let Some(init) = self.pending_inits.remove(&addr) {
             self.peers.insert(
                 addr,
-                PeerData {
-                    addrs: info.addrs.clone(),
-                    crypto: init,
-                    node_id: info.node_id,
-                    peer_timeout: info.peer_timeout.unwrap_or(DEFAULT_PEER_TIMEOUT),
-                    last_seen: TS::now(),
-                    timeout: TS::now() + self.config.peer_timeout as Time,
-                },
+                PeerData::new(
+                    info.addrs.clone(),
+                    self.config.peer_timeout,
+                    info.peer_timeout.unwrap_or(DEFAULT_PEER_TIMEOUT),
+                    info.node_id,
+                    init,
+                ),
             );
             self.update_peer_info(addr, Some(info))?;
         } else {
@@ -613,7 +609,7 @@ impl<D: Device, P: Protocol, S: Socket, TS: TimeSource> GenericCloud<D, P, S, TS
     }
 
     fn remove_peer(&mut self, addr: SocketAddr) {
-        if let Some(peer) = self.peers.remove(&addr) {
+        if let Some(peer_data) = self.peers.remove(&addr) {
             info!("Closing connection to {}", addr_nice(addr));
             self.table.remove_claims(addr);
             self.config.call_hook(
@@ -621,7 +617,7 @@ impl<D: Device, P: Protocol, S: Socket, TS: TimeSource> GenericCloud<D, P, S, TS
                 vec![
                     ("PEER", format!("{:?}", addr)),
                     ("IFNAME", self.device.ifname().to_owned()),
-                    ("NODE_ID", bytes_to_hex(&peer.node_id)),
+                    ("NODE_ID", bytes_to_hex(&peer_data.get_node_id())),
                 ],
                 true,
             );
@@ -646,7 +642,7 @@ impl<D: Device, P: Protocol, S: Socket, TS: TimeSource> GenericCloud<D, P, S, TS
                     continue 'outer;
                 }
                 for p in self.peers.values() {
-                    if p.node_id == node_id {
+                    if p.get_node_id() == node_id {
                         continue 'outer;
                     }
                 }
@@ -657,17 +653,15 @@ impl<D: Device, P: Protocol, S: Socket, TS: TimeSource> GenericCloud<D, P, S, TS
     }
 
     fn update_peer_info(&mut self, addr: SocketAddr, info: Option<NodeInfo>) -> Result<(), Error> {
-        if let Some(peer) = self.peers.get_mut(&addr) {
-            peer.last_seen = TS::now();
-            peer.timeout = TS::now() + self.config.peer_timeout as Time;
+        if let Some(peer_data) = self.peers.get_mut(&addr) {
+            peer_data.update_last_seen();
+            peer_data.update_timeout(self.config.peer_timeout);
             if let Some(info) = &info {
                 // Update peer addresses, always add seen address
-                peer.addrs.clear();
-                peer.addrs.push(addr);
+                peer_data.clear_addrs();
+                peer_data.add_addr(&addr);
                 for addr in &info.addrs {
-                    if !peer.addrs.contains(addr) {
-                        peer.addrs.push(*addr);
-                    }
+                    peer_data.add_addr(addr);
                 }
             }
         } else {
@@ -768,9 +762,9 @@ impl<D: Device, P: Protocol, S: Socket, TS: TimeSource> GenericCloud<D, P, S, TS
         } else if is_init_message(data.message()) {
             // COLD PATH
             let mut result = None;
-            if let Some(peer) = self.peers.get_mut(&src) {
-                if peer.crypto.has_init() {
-                    result = Some(peer.crypto.handle_message(data))
+            if let Some(peer_data) = self.peers.get_mut(&src) {
+                if peer_data.has_init() {
+                    result = Some(peer_data.handle_message(data))
                 }
             }
             if let Some(result) = result {
@@ -818,9 +812,9 @@ impl<D: Device, P: Protocol, S: Socket, TS: TimeSource> GenericCloud<D, P, S, TS
                     }
                 }
             }
-        } else if let Some(peer) = self.peers.get_mut(&src) {
+        } else if let Some(peer_data) = self.peers.get_mut(&src) {
             // HOT PATH
-            peer.crypto.handle_message(data)
+            peer_data.handle_message(data)
         } else {
             // COLD PATH
             info!("Ignoring non-init message from unknown peer {}", addr_nice(src));
