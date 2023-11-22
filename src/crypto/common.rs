@@ -1,7 +1,8 @@
 use super::{
-    core::{test_speed, CryptoCore},
+    core::CryptoCore,
     init::{self, InitResult, InitState, CLOSING},
     rotate::RotationState,
+    EXTRA_LEN, random_data,
 };
 use crate::{
     error::Error,
@@ -16,7 +17,13 @@ use ring::{
     signature::{Ed25519KeyPair, KeyPair, ED25519_PUBLIC_KEY_LEN},
 };
 use smallvec::{smallvec, SmallVec};
-use std::{fmt::Debug, io::Read, num::NonZeroU32, sync::Arc, time::Duration};
+use std::{
+    fmt::Debug,
+    io::Read,
+    num::NonZeroU32,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 const SALT: &[u8; 32] = b"flamingoflamiNGOFlamingoflamingo";
 const INIT_MESSAGE_FIRST_BYTE: u8 = 0xff;
@@ -444,4 +451,35 @@ pub fn parse_algorithms(algos: &[String]) -> Result<(bool, Vec<&'static aead::Al
 ///
 pub fn peer_instance<P: Payload>(crypto: &Crypto, node_id: NodeId, payload: P) -> PeerCrypto<P> {
     PeerCrypto::new(node_id, payload, crypto.get_key_pair(), crypto.get_trusted_keys(), crypto.get_algorithms())
+}
+
+///
+///
+///
+fn create_dummy_pair(algo: &'static aead::Algorithm) -> (CryptoCore, CryptoCore) {
+    let key_data = random_data(algo.key_len());
+    let sender = CryptoCore::new(LessSafeKey::new(UnboundKey::new(algo, &key_data).unwrap()), true);
+    let receiver = CryptoCore::new(LessSafeKey::new(UnboundKey::new(algo, &key_data).unwrap()), false);
+    (sender, receiver)
+}
+
+///
+///
+///
+fn test_speed(algo: &'static aead::Algorithm, max_time: &Duration) -> f64 {
+    let mut buffer = MsgBuffer::new(EXTRA_LEN);
+    buffer.set_length(1000);
+    let (mut sender, mut receiver) = create_dummy_pair(algo);
+    let mut iterations = 0;
+    let start = Instant::now();
+    while (Instant::now() - start).as_nanos() < max_time.as_nanos() {
+        for _ in 0..1000 {
+            sender.encrypt(&mut buffer);
+            receiver.decrypt(&mut buffer).unwrap();
+        }
+        iterations += 1000;
+    }
+    let duration = (Instant::now() - start).as_secs_f64();
+    let data = iterations * 1000 * 2;
+    data as f64 / duration / 1_000_000.0
 }

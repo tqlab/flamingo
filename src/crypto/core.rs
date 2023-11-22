@@ -50,21 +50,15 @@ use ring::{
 use std::{
     io::{Cursor, Read, Write},
     mem,
-    time::{Duration, Instant},
 };
 
 use crate::{error::Error, util::MsgBuffer};
 
+use super::random_data;
+
 const NONCE_LEN: usize = 12;
 pub const TAG_LEN: usize = 16;
 pub const EXTRA_LEN: usize = 8;
-
-fn random_data(size: usize) -> Vec<u8> {
-    let rand = SystemRandom::new();
-    let mut data = vec![0; size];
-    rand.fill(&mut data).expect("Failed to obtain random bytes");
-    data
-}
 
 #[derive(PartialOrd, Ord, PartialEq, Debug, Eq, Clone)]
 struct Nonce([u8; NONCE_LEN]);
@@ -229,29 +223,4 @@ impl CryptoCore {
             k.update_min_nonce();
         }
     }
-}
-
-pub fn create_dummy_pair(algo: &'static aead::Algorithm) -> (CryptoCore, CryptoCore) {
-    let key_data = random_data(algo.key_len());
-    let sender = CryptoCore::new(LessSafeKey::new(UnboundKey::new(algo, &key_data).unwrap()), true);
-    let receiver = CryptoCore::new(LessSafeKey::new(UnboundKey::new(algo, &key_data).unwrap()), false);
-    (sender, receiver)
-}
-
-pub fn test_speed(algo: &'static aead::Algorithm, max_time: &Duration) -> f64 {
-    let mut buffer = MsgBuffer::new(EXTRA_LEN);
-    buffer.set_length(1000);
-    let (mut sender, mut receiver) = create_dummy_pair(algo);
-    let mut iterations = 0;
-    let start = Instant::now();
-    while (Instant::now() - start).as_nanos() < max_time.as_nanos() {
-        for _ in 0..1000 {
-            sender.encrypt(&mut buffer);
-            receiver.decrypt(&mut buffer).unwrap();
-        }
-        iterations += 1000;
-    }
-    let duration = (Instant::now() - start).as_secs_f64();
-    let data = iterations * 1000 * 2;
-    data as f64 / duration / 1_000_000.0
 }
