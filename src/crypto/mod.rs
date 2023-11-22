@@ -6,9 +6,11 @@ mod common;
 mod core;
 mod init;
 mod rotate;
+mod crypto;
 
 pub use self::core::{EXTRA_LEN, TAG_LEN};
 pub use common::*;
+pub use crypto::Crypto;
 use ring::rand::{SystemRandom, SecureRandom};
 
 pub fn random_data(size: usize) -> Vec<u8> {

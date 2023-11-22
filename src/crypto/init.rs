@@ -56,7 +56,7 @@
 
 use super::{
     core::{CryptoCore, EXTRA_LEN},
-    Algorithms, EcdhPrivateKey, EcdhPublicKey, Ed25519PublicKey, Payload,
+    EcdhPrivateKey, EcdhPublicKey, Ed25519PublicKey, Payload,
 };
 use crate::{error::Error, types::NodeId, util::MsgBuffer};
 use byteorder::{NetworkEndian, ReadBytesExt, WriteBytesExt};
@@ -86,8 +86,14 @@ pub const MAX_FAILED_RETRIES: usize = 120;
 pub const SALTED_NODE_ID_HASH_LEN: usize = 20;
 pub type SaltedNodeIdHash = [u8; SALTED_NODE_ID_HASH_LEN];
 
+#[derive(Clone)]
+pub struct Algorithms {
+    pub algorithm_speeds: SmallVec<[(&'static Algorithm, f32); 3]>,
+    pub allow_unencrypted: bool,
+}
+
 ///
-/// 
+///
 /// # ping
 /// ```
 /// +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -99,7 +105,7 @@ pub type SaltedNodeIdHash = [u8; SALTED_NODE_ID_HASH_LEN];
 /// +--4---+--4---+--1---+--2--+--len-+--1---+--2--+--len-+--1---+--2--+--len-+--1---+--2--+--len-+--1---+--2--+--len-+  
 /// +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 /// ```
-/// 
+///
 /// # pong/peng
 /// The payload is encrypted [`crate::messages::NodeInfo`].
 /// ```
@@ -112,9 +118,9 @@ pub type SaltedNodeIdHash = [u8; SALTED_NODE_ID_HASH_LEN];
 /// +--4---+--4---+--1---+--2--+--len-+--1---+--2--+--len-+--1---+--2--+--len-+--1---+--2--+--len-+  
 /// +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 /// ```
-/// 
-/// 
-/// 
+///
+///
+///
 #[allow(clippy::large_enum_variant)]
 pub enum InitMsg {
     Ping {

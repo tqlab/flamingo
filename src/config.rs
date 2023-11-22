@@ -3,7 +3,6 @@
 // This software is licensed under GPL-3 or newer (see LICENSE.md)
 
 use super::{device::Type, types::Mode, util::run_cmd, util::Duration};
-pub use crate::crypto::Config as CryptoConfig;
 
 use std::{cmp::max, collections::HashMap, ffi::OsStr, process, thread};
 use structopt::StructOpt;
@@ -357,4 +356,13 @@ pub struct ConfigFile {
     pub group: Option<String>,
     pub hook: Option<String>,
     pub hooks: HashMap<String, String>,
+}
+
+
+#[derive(Debug, Default, Deserialize, Serialize, Clone, PartialEq)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields, default)]
+pub struct CryptoConfig {
+    pub password: Option<String>,
+    pub trusted_keys: Vec<String>,
+    pub algorithms: Vec<String>,
 }
