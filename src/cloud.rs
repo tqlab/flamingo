@@ -22,7 +22,7 @@ use smallvec::{smallvec, SmallVec};
 use crate::{
     beacon::BeaconSerializer,
     config::{Config, DEFAULT_PEER_TIMEOUT, DEFAULT_PORT},
-    crypto::{is_init_message, Crypto, MessageResult, PeerCrypto},
+    crypto::{Crypto, MessageResult},
     device::{Device, Type},
     error::Error,
     messages::{
@@ -31,7 +31,7 @@ use crate::{
     },
     net::{mapped_addr, Socket},
     payload::Protocol,
-    peer::PeerData,
+    peer::{PeerData, PeerCrypto, is_init_message},
     poll::{WaitImpl, WaitResult},
     port_forwarding::PortForwarding,
     table::ClaimTable,
@@ -320,7 +320,7 @@ impl<D: Device, P: Protocol, S: Socket, TS: TimeSource> GenericCloud<D, P, S, TS
         }
         debug!("Connecting to {:?}", addr);
         let payload = self.create_node_info();
-        let mut peer_crypto = crate::crypto::peer_instance(&self.crypto, self.node_id, payload);
+        let mut peer_crypto = crate::peer::peer_instance(&self.crypto, self.node_id, payload);
         let mut msg = MsgBuffer::new(SPACE_BEFORE);
         peer_crypto.initialize(&mut msg)?;
         self.pending_inits.insert(addr, peer_crypto);
@@ -790,7 +790,7 @@ impl<D: Device, P: Protocol, S: Socket, TS: TimeSource> GenericCloud<D, P, S, TS
                         }
                     }
                 } else {
-                    let mut init = crate::crypto::peer_instance(&self.crypto, self.node_id, self.create_node_info());
+                    let mut init = crate::peer::peer_instance(&self.crypto, self.node_id, self.create_node_info());
                     let msg_result = init.handle_message(data);
                     match msg_result {
                         Ok(res) => {

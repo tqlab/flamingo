@@ -29,7 +29,6 @@
 //
 // The whole communication is sent via the crypto stream and is therefore encrypted and protected against tampering.
 
-use super::Key;
 use crate::{error::Error, util::MsgBuffer};
 use byteorder::{NetworkEndian, ReadBytesExt, WriteBytesExt};
 use ring::{
@@ -41,6 +40,7 @@ use std::io::{self, Cursor, Read, Write};
 
 type EcdhPublicKey = UnparsedPublicKey<SmallVec<[u8; 96]>>;
 type EcdhPrivateKey = EphemeralPrivateKey;
+type Key = SmallVec<[u8; 32]>;
 
 pub struct RotationMessage {
     message_id: u64,

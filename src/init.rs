@@ -54,10 +54,7 @@
 // Once every second, both nodes check whether they have already finished the initialization. If not, they repeat their
 // last message. After 5 seconds, the initialization is aborted as failed.
 
-use super::{
-    core::{CryptoCore, EXTRA_LEN},
-    EcdhPrivateKey, EcdhPublicKey, Ed25519PublicKey, Payload,
-};
+use crate::crypto::{Algorithms, CryptoCore, EcdhPublicKey, Ed25519PublicKey, EXTRA_LEN, Payload, EcdhPrivateKey};
 use crate::{error::Error, types::NodeId, util::MsgBuffer};
 use byteorder::{NetworkEndian, ReadBytesExt, WriteBytesExt};
 use ring::{
@@ -85,12 +82,6 @@ pub const MAX_FAILED_RETRIES: usize = 120;
 
 pub const SALTED_NODE_ID_HASH_LEN: usize = 20;
 pub type SaltedNodeIdHash = [u8; SALTED_NODE_ID_HASH_LEN];
-
-#[derive(Clone)]
-pub struct Algorithms {
-    pub algorithm_speeds: SmallVec<[(&'static Algorithm, f32); 3]>,
-    pub allow_unencrypted: bool,
-}
 
 ///
 ///
@@ -148,7 +139,7 @@ impl InitMsg {
     const PART_SALTED_NODE_ID_HASH: u8 = 2;
     const PART_STAGE: u8 = 1;
 
-    fn stage(&self) -> u8 {
+    pub fn stage(&self) -> u8 {
         match self {
             InitMsg::Ping { .. } => STAGE_PING,
             InitMsg::Pong { .. } => STAGE_PONG,
@@ -156,7 +147,7 @@ impl InitMsg {
         }
     }
 
-    fn salted_node_id_hash(&self) -> &SaltedNodeIdHash {
+    pub fn salted_node_id_hash(&self) -> &SaltedNodeIdHash {
         match self {
             InitMsg::Ping { salted_node_id_hash, .. }
             | InitMsg::Pong { salted_node_id_hash, .. }
@@ -174,7 +165,7 @@ impl InitMsg {
         short_hash
     }
 
-    fn read_from(buffer: &[u8], trusted_keys: &[Ed25519PublicKey]) -> Result<(Self, Ed25519PublicKey), Error> {
+    pub fn read_from(buffer: &[u8], trusted_keys: &[Ed25519PublicKey]) -> Result<(Self, Ed25519PublicKey), Error> {
         let mut r = Cursor::new(buffer);
 
         let mut public_key_salt = [0; 4];
@@ -323,7 +314,7 @@ impl InitMsg {
         Ok((msg, public_key_data))
     }
 
-    fn write_to(&self, buffer: &mut [u8], key: &Ed25519KeyPair) -> Result<usize, io::Error> {
+    pub fn write_to(&self, buffer: &mut [u8], key: &Ed25519KeyPair) -> Result<usize, io::Error> {
         let mut w = Cursor::new(buffer);
 
         let rand = SystemRandom::new();
@@ -432,6 +423,9 @@ pub struct InitState<P: Payload> {
 }
 
 impl<P: Payload> InitState<P> {
+    ///
+    /// create `InitState` instance.
+    ///
     pub fn new(
         node_id: NodeId, payload: P, key_pair: Arc<Ed25519KeyPair>, trusted_keys: Arc<[Ed25519PublicKey]>,
         algorithms: Algorithms,

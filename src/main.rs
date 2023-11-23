@@ -15,16 +15,18 @@ pub mod config;
 pub mod crypto;
 pub mod device;
 pub mod error;
+pub mod init;
 pub mod logger;
 pub mod messages;
 pub mod net;
 pub mod payload;
+pub mod peer;
 pub mod poll;
 pub mod port_forwarding;
+pub mod rotate;
 pub mod table;
 pub mod traffic;
 pub mod types;
-pub mod peer;
 
 use structopt::StructOpt;
 

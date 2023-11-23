@@ -1,4 +1,8 @@
-use super::{core::CryptoCore, init::Algorithms, random_data, EXTRA_LEN};
+// Flamingo - Peer-to-Peer VPN
+// Copyright (C) 2023  John Lee
+// This software is licensed under GPL-3 or newer (see LICENSE.md)
+
+use super::{core::CryptoCore, random_data, Algorithms, EXTRA_LEN};
 use crate::{
     config::CryptoConfig,
     error::Error,
