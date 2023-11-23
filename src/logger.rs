@@ -1,3 +1,7 @@
+// Flamingo - Peer-to-Peer VPN
+// Copyright (C) 2023  John Lee
+// This software is licensed under GPL-3 or newer (see LICENSE.md)
+
 use std::{
     fs::{self, File},
     io::{self, Write},

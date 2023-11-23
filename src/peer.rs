@@ -1,3 +1,7 @@
+// Flamingo - Peer-to-Peer VPN
+// Copyright (C) 2023  John Lee
+// This software is licensed under GPL-3 or newer (see LICENSE.md)
+
 use std::{marker::PhantomData, net::SocketAddr, sync::Arc};
 
 use ring::{
@@ -298,6 +302,8 @@ impl<P: Payload> PeerCrypto<P> {
         if let Some(ref mut init) = self.init {
             init.every_second(out)?;
         }
+
+        // reset init to None.
         if self.init.as_ref().map(|i| i.stage()).unwrap_or(CLOSING) == CLOSING {
             self.init = None
         }

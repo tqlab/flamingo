@@ -52,13 +52,15 @@ use std::{
     mem,
 };
 
-use crate::{error::Error, util::MsgBuffer};
+use crate::{
+    crypto::{EXTRA_LEN, TAG_LEN},
+    error::Error,
+    util::MsgBuffer,
+};
 
 use super::random_data;
 
 const NONCE_LEN: usize = 12;
-pub const TAG_LEN: usize = 16;
-pub const EXTRA_LEN: usize = 8;
 
 #[derive(PartialOrd, Ord, PartialEq, Debug, Eq, Clone)]
 struct Nonce([u8; NONCE_LEN]);
@@ -130,6 +132,9 @@ pub struct CryptoCore {
 }
 
 impl CryptoCore {
+    ///
+    ///
+    ///
     pub fn new(key: LessSafeKey, nonce_half: bool) -> Self {
         let rand = SystemRandom::new();
         let dummy_key_data = random_data(key.algorithm().key_len());
@@ -149,6 +154,9 @@ impl CryptoCore {
         }
     }
 
+    ///
+    ///
+    ///
     pub fn encrypt(&mut self, buffer: &mut MsgBuffer) {
         let data_start = buffer.get_start();
         let data_length = buffer.len();
@@ -169,22 +177,9 @@ impl CryptoCore {
         tag_space.clone_from_slice(tag.as_ref());
     }
 
-    fn decrypt_with_key(key: &mut CryptoKey, nonce: Nonce, data_and_tag: &mut [u8]) -> Result<(), Error> {
-        if nonce < key.min_nonce {
-            return Err(Error::Crypto("Old nonce rejected"));
-        }
-        // decrypt
-        let crypto_nonce = aead::Nonce::assume_unique_for_key(*nonce.as_bytes());
-        key.key
-            .open_in_place(crypto_nonce, aead::Aad::empty(), data_and_tag)
-            .map_err(|_| Error::Crypto("Failed to decrypt data"))?;
-        // last seen nonce
-        if key.seen_nonce < nonce {
-            key.seen_nonce = nonce;
-        }
-        Ok(())
-    }
-
+    ///
+    ///
+    ///
     pub fn decrypt(&mut self, buffer: &mut MsgBuffer) -> Result<(), Error> {
         assert!(buffer.len() >= EXTRA_LEN + TAG_LEN);
         let (extra, data_and_tag) = buffer.message_mut().split_at_mut(EXTRA_LEN);
@@ -204,6 +199,9 @@ impl CryptoCore {
         result
     }
 
+    ///
+    ///
+    ///
     pub fn rotate_key(&mut self, key: LessSafeKey, id: u64, use_for_sending: bool) {
         debug!("Rotated key {} (use for sending: {})", id, use_for_sending);
         let id = (id % 4) as usize;
@@ -213,14 +211,36 @@ impl CryptoCore {
         }
     }
 
+    ///
+    ///
+    ///
     pub fn algorithm(&self) -> &'static aead::Algorithm {
         self.keys[self.current_key].key.algorithm()
     }
 
+    ///
+    ///
+    ///
     pub fn every_second(&mut self) {
         // Set min nonce on all keys
         for k in &mut self.keys {
             k.update_min_nonce();
         }
+    }
+
+    fn decrypt_with_key(key: &mut CryptoKey, nonce: Nonce, data_and_tag: &mut [u8]) -> Result<(), Error> {
+        if nonce < key.min_nonce {
+            return Err(Error::Crypto("Old nonce rejected"));
+        }
+        // decrypt
+        let crypto_nonce = aead::Nonce::assume_unique_for_key(*nonce.as_bytes());
+        key.key
+            .open_in_place(crypto_nonce, aead::Aad::empty(), data_and_tag)
+            .map_err(|_| Error::Crypto("Failed to decrypt data"))?;
+        // last seen nonce
+        if key.seen_nonce < nonce {
+            key.seen_nonce = nonce;
+        }
+        Ok(())
     }
 }

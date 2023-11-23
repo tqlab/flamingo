@@ -9,7 +9,6 @@ use std::{fmt::Debug, io::Read};
 
 use crate::{error::Error, util::MsgBuffer};
 
-pub use self::core::{EXTRA_LEN, TAG_LEN};
 pub use core::*;
 pub use crypto::Crypto;
 
@@ -24,6 +23,9 @@ use smallvec::SmallVec;
 pub type Ed25519PublicKey = [u8; ED25519_PUBLIC_KEY_LEN];
 pub type EcdhPublicKey = UnparsedPublicKey<SmallVec<[u8; 96]>>;
 pub type EcdhPrivateKey = EphemeralPrivateKey;
+
+pub const TAG_LEN: usize = 16;
+pub const EXTRA_LEN: usize = 8;
 
 pub trait Payload: Debug + PartialEq + Sized {
     fn write_to(&self, buffer: &mut MsgBuffer);
