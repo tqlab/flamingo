@@ -13,12 +13,23 @@ RUN apt-get update \
     libc6-dev-i386 \
     gcc-11-multilib \
     asciidoctor \
- && apt-get clean && rm -rf /var/lib/apt/lists/* && rm -rf /home/user/code/target/debian/*
+ && apt-get clean && rm -rf /var/lib/apt/lists/* && rm -rf /home/user/*
+
+RUN ln -s asm-generic/ /usr/include/asm
+
+USER root
+WORKDIR /home/user
+
+COPY config /opt/rust/cargo/config
+RUN mkdir -p /home/user/.cargo && ln -s /opt/rust/cargo/config /home/user/.cargo/config
 
 ENV RUSTUP_HOME=/opt/rust/rustup \
     PATH=/opt/rust/cargo/bin:/home/user/.cargo/bin:/usr/local/musl/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-RUN curl https://sh.rustup.rs -sSf | env CARGO_HOME=/opt/rust/cargo sh -s -- -y --profile minimal --no-modify-path
+ENV RUSTUP_DIST_SERVER=https://mirrors.ustc.edu.cn/rust-static
+ENV RUSTUP_UPDATE_ROOT=https://mirrors.ustc.edu.cn/rust-static/rustup
+
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | env CARGO_HOME=/opt/rust/cargo sh -s -- -y --profile minimal --no-modify-path
 
 RUN env CARGO_HOME=/opt/rust/cargo rustup target add i686-unknown-linux-gnu \
  && env CARGO_HOME=/opt/rust/cargo rustup target add armv5te-unknown-linux-gnueabi \
@@ -27,14 +38,6 @@ RUN env CARGO_HOME=/opt/rust/cargo rustup target add i686-unknown-linux-gnu \
 
 RUN env CARGO_HOME=/opt/rust/cargo cargo install cargo-deb \
  && rm -rf /opt/rust/cargo/{git,tmp,registry}
-
-RUN ln -s asm-generic/ /usr/include/asm
-
-USER root
-WORKDIR /home/user
-
-RUN mkdir -p /home/user/.cargo 
-COPY config /home/user/.cargo/
 
 VOLUME /home/user/.cargo/tmp
 VOLUME /home/user/.cargo/git
